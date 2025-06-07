@@ -18,6 +18,7 @@ import {
 	MousePointer2,
 	Trash2,
 	Grid,
+	Github,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -1658,6 +1659,19 @@ export default function AnnotationCanvas() {
 						{renderToolSettings()}
 					</div>
 					<div className="flex items-center gap-1">
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={() => window.open('https://github.com/pablopunk/x', '_blank')}
+									className="h-9 w-9"
+								>
+									<Github className="h-5 w-5" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>View on GitHub</TooltipContent>
+						</Tooltip>
 						<ThemeToggleButton />
 						<Separator orientation="vertical" className="h-8 mx-2" />
 						<Tooltip>
