@@ -37,6 +37,7 @@ import ImageHistoryTray from "@/components/image-history-tray";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
+import Image from "next/image";
 
 export type Tool =
 	| "cursor"
@@ -1525,6 +1526,13 @@ export default function AnnotationCanvas() {
 		<TooltipProvider>
 			<div className="w-full h-full flex flex-col bg-background relative">
 				<div className="flex flex-nowrap items-center overflow-x-auto gap-1 p-2">
+					<Image
+						src="/favicon/favicon-96x96.png"
+						alt="Logo"
+						width={32}
+						height={32}
+						className="rounded-sm mr-2"
+					/>
 					{toolList.map((tool) => (
 						<Tooltip key={tool.name}>
 							<TooltipTrigger asChild>
@@ -1593,7 +1601,7 @@ export default function AnnotationCanvas() {
 								title="Clear Annotations"
 								disabled={isCanvasLoading || isLoadingHistory}
 							>
-								<Eraser className="h-5 w-5" />
+								<Eraser className="h-5 w-5 text-amber-500 dark:text-amber-400" />
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>Clear All Annotations</TooltipContent>
@@ -1612,7 +1620,7 @@ export default function AnnotationCanvas() {
 								}
 								title="Delete Selected"
 							>
-								<Trash2 className="h-5 w-5" />
+								<Trash2 className="h-5 w-5 text-red-500 dark:text-red-400" />
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>Delete Selected Annotation</TooltipContent>
@@ -1622,6 +1630,8 @@ export default function AnnotationCanvas() {
 						{renderToolSettings()}
 					</div>
 					<div className="flex items-center gap-1">
+						<ThemeToggleButton />
+						<Separator orientation="vertical" className="h-8 mx-2" />
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button
@@ -1629,9 +1639,9 @@ export default function AnnotationCanvas() {
 									size="icon"
 									onClick={handleCopyToClipboard}
 									disabled={!mainImage || isCanvasLoading || isLoadingHistory}
-									className="h-9 w-9"
+									className="h-9 w-9 text-teal-500 dark:text-teal-400"
 								>
-									<Copy className="h-5 w-5" />
+									<Copy className="h-5 w-5 text-teal-500 dark:text-teal-400" />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent>Copy to Clipboard</TooltipContent>
@@ -1643,14 +1653,13 @@ export default function AnnotationCanvas() {
 									size="icon"
 									onClick={handleSaveToDisk}
 									disabled={!mainImage || isCanvasLoading || isLoadingHistory}
-									className="h-9 w-9"
+									className="h-9 w-9 text-emerald-500 dark:text-emerald-400"
 								>
-									<Save className="h-5 w-5" />
+									<Save className="h-5 w-5 text-emerald-500 dark:text-emerald-400" />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent>Save to Disk</TooltipContent>
 						</Tooltip>
-						<ThemeToggleButton />
 					</div>
 				</div>
 
