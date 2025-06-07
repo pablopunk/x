@@ -187,12 +187,8 @@ export default function AnnotationCanvas() {
 	const [startPoint, setStartPoint] = useState<Point | null>(null);
 	const [currentEndPoint, setCurrentEndPoint] = useState<Point | null>(null);
 	const [currentText, setCurrentText] = useState("");
-	const [textInputPosition, setTextInputPosition] = useState<Point | null>(
-		null,
-	);
-	const [currentHighlightPoints, setCurrentHighlightPoints] = useState<Point[]>(
-		[],
-	);
+	const [textInputPosition, setTextInputPosition] = useState<Point | null>(null);
+	const [currentHighlightPoints, setCurrentHighlightPoints] = useState<Point[]>([]);
 	const [strokeColor, setStrokeColor] = useState(DEFAULT_STROKE_COLOR);
 	const [fillColor, setFillColor] = useState(DEFAULT_FILL_COLOR);
 	const [useFill, setUseFill] = useState(false);
@@ -1521,6 +1517,38 @@ export default function AnnotationCanvas() {
 			setIsCanvasLoading(false);
 		}
 	};
+
+	// Add keyboard shortcuts
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			// Don't trigger shortcuts if user is typing in an input
+			if (e.target instanceof HTMLInputElement) return;
+
+			switch (e.key.toLowerCase()) {
+				case 'v':
+					setCurrentTool('cursor');
+					break;
+				case 'b':
+					setCurrentTool('highlight');
+					break;
+				case 'z':
+					if (e.metaKey || e.ctrlKey) {
+						e.preventDefault();
+						annotationHistory.undo();
+					}
+					break;
+				case 'backspace':
+				case 'delete':
+					if (selectedAnnotationId && currentTool === 'cursor') {
+						handleDeleteSelectedAnnotation();
+					}
+					break;
+			}
+		};
+
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, [annotationHistory, selectedAnnotationId, currentTool]);
 
 	return (
 		<TooltipProvider>
