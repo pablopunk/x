@@ -1,4 +1,4 @@
-# [x](https://x.pablopunk.com)
+# [X](https://x.pablopunk.com)
 
 ![logo](https://github.com/pablopunk/x/blob/main/public/favicon/apple-touch-icon.png?raw=true)
 
