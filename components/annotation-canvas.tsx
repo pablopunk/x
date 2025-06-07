@@ -901,6 +901,12 @@ export default function AnnotationCanvas() {
 									y: p.y + deltaY,
 								})),
 							};
+						} else if (anno.type === "text") {
+							updatedAnno = {
+								...updatedAnno,
+								x: newX,
+								y: newY,
+							};
 						}
 						return updatedAnno;
 					}
