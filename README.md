@@ -1,6 +1,8 @@
 # [X](https://x.pablopunk.com)
 
-![logo](https://github.com/pablopunk/x/blob/main/public/favicon/apple-touch-icon.png?raw=true)
+<p align="center">
+  <img src="https://github.com/pablopunk/x/blob/main/public/logo.png?raw=true" alt="logo" width="150px" />
+</p>
 
 > X. Free image annotation tool.
 
