@@ -1,1526 +1,1789 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState, useRef, useEffect, useCallback } from "react"
+import type React from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Eraser,
-  Square,
-  Eye,
-  Copy,
-  Save,
-  Type,
-  ArrowUpRight,
-  Circle,
-  Minus,
-  Highlighter,
-  Undo2,
-  Redo2,
-  MousePointer2,
-  Trash2,
-  Grid,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Slider } from "@/components/ui/slider"
-import { Input } from "@/components/ui/input"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Card, CardContent } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import { useHistory as useAnnotationHistory } from "@/hooks/use-history"
-import { useImageHistory } from "@/hooks/use-image-history"
-import ImageHistoryTray from "@/components/image-history-tray"
-import { useToast } from "@/hooks/use-toast"
-import { useTheme } from "next-themes"
-import { ThemeToggleButton } from "@/components/theme-toggle-button"
+	Eraser,
+	Square,
+	Eye,
+	Copy,
+	Save,
+	Type,
+	ArrowUpRight,
+	Circle,
+	Minus,
+	Highlighter,
+	Undo2,
+	Redo2,
+	MousePointer2,
+	Trash2,
+	Grid,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Card, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { useHistory as useAnnotationHistory } from "@/hooks/use-history";
+import { useImageHistory } from "@/hooks/use-image-history";
+import ImageHistoryTray from "@/components/image-history-tray";
+import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "next-themes";
+import { ThemeToggleButton } from "@/components/theme-toggle-button";
 
 export type Tool =
-  | "cursor"
-  | "rectangle"
-  | "spotlight-area"
-  | "pixelate-area"
-  | "text"
-  | "arrow"
-  | "ellipse"
-  | "line"
-  | "highlight"
+	| "cursor"
+	| "rectangle"
+	| "spotlight-area"
+	| "pixelate-area"
+	| "text"
+	| "arrow"
+	| "ellipse"
+	| "line"
+	| "highlight";
 
 export interface Point {
-  x: number
-  y: number
+	x: number;
+	y: number;
 }
 export interface BaseAnnotation {
-  id: string
-  type: Tool
-  x: number
-  y: number
-  width: number
-  height: number
+	id: string;
+	type: Tool;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 }
 interface RectangleAnnotation extends BaseAnnotation {
-  type: "rectangle"
-  strokeColor: string
-  fillColor?: string
-  strokeWidth: number
+	type: "rectangle";
+	strokeColor: string;
+	fillColor?: string;
+	strokeWidth: number;
 }
 interface SpotlightAreaAnnotation extends BaseAnnotation {
-  type: "spotlight-area"
+	type: "spotlight-area";
 }
 interface PixelateAreaAnnotation extends BaseAnnotation {
-  type: "pixelate-area"
-  pixelSize: number
+	type: "pixelate-area";
+	pixelSize: number;
 }
 interface TextAnnotation extends BaseAnnotation {
-  type: "text"
-  text: string
-  color: string
-  fontSize: number
-  fontFamily: string
+	type: "text";
+	text: string;
+	color: string;
+	fontSize: number;
+	fontFamily: string;
 }
 interface ArrowAnnotation extends BaseAnnotation {
-  type: "arrow"
-  startX: number
-  startY: number
-  endX: number
-  endY: number
-  color: string
-  strokeWidth: number
+	type: "arrow";
+	startX: number;
+	startY: number;
+	endX: number;
+	endY: number;
+	color: string;
+	strokeWidth: number;
 }
 interface EllipseAnnotation extends BaseAnnotation {
-  type: "ellipse"
-  centerX: number
-  centerY: number
-  radiusX: number
-  radiusY: number
-  strokeColor: string
-  fillColor?: string
-  strokeWidth: number
+	type: "ellipse";
+	centerX: number;
+	centerY: number;
+	radiusX: number;
+	radiusY: number;
+	strokeColor: string;
+	fillColor?: string;
+	strokeWidth: number;
 }
 interface LineAnnotation extends BaseAnnotation {
-  type: "line"
-  startX: number
-  startY: number
-  endX: number
-  endY: number
-  color: string
-  strokeWidth: number
+	type: "line";
+	startX: number;
+	startY: number;
+	endX: number;
+	endY: number;
+	color: string;
+	strokeWidth: number;
 }
 interface HighlightAnnotation extends BaseAnnotation {
-  type: "highlight"
-  color: string // rgba
-  strokeWidth: number
-  points: Point[]
+	type: "highlight";
+	color: string; // rgba
+	strokeWidth: number;
+	points: Point[];
 }
 
 export type Annotation =
-  | RectangleAnnotation
-  | SpotlightAreaAnnotation
-  | PixelateAreaAnnotation
-  | TextAnnotation
-  | ArrowAnnotation
-  | EllipseAnnotation
-  | LineAnnotation
-  | HighlightAnnotation
+	| RectangleAnnotation
+	| SpotlightAreaAnnotation
+	| PixelateAreaAnnotation
+	| TextAnnotation
+	| ArrowAnnotation
+	| EllipseAnnotation
+	| LineAnnotation
+	| HighlightAnnotation;
 
-const DEFAULT_STROKE_COLOR = "#FCA5A5" // Pastel Red
-const DEFAULT_FILL_ALPHA = 0.3
-const DEFAULT_FILL_COLOR = `rgba(252, 165, 165, ${DEFAULT_FILL_ALPHA})`
+const DEFAULT_STROKE_COLOR = "#FCA5A5"; // Pastel Red
+const DEFAULT_FILL_ALPHA = 0.3;
+const DEFAULT_FILL_COLOR = `rgba(252, 165, 165, ${DEFAULT_FILL_ALPHA})`;
 
-const DEFAULT_TEXT_COLOR = "#1F2937" // Dark Gray
+const DEFAULT_TEXT_COLOR = "#1F2937"; // Dark Gray
 
-const DEFAULT_HIGHLIGHT_ALPHA = 0.5
-const DEFAULT_HIGHLIGHT_COLOR = `rgba(253, 224, 71, ${DEFAULT_HIGHLIGHT_ALPHA})`
+const DEFAULT_HIGHLIGHT_ALPHA = 0.5;
+const DEFAULT_HIGHLIGHT_COLOR = `rgba(253, 224, 71, ${DEFAULT_HIGHLIGHT_ALPHA})`;
 
-const DEFAULT_PIXEL_SIZE = 10
+const DEFAULT_PIXEL_SIZE = 10;
 
-const PREDEFINED_OPAQUE_COLORS = ["#FCA5A5", "#FDBA74", "#FDE047", "#86EFAC", "#93C5FD", "#A5B4FC", "#1F2937"]
+const PREDEFINED_OPAQUE_COLORS = [
+	"#FCA5A5",
+	"#FDBA74",
+	"#FDE047",
+	"#86EFAC",
+	"#93C5FD",
+	"#A5B4FC",
+	"#1F2937",
+];
 
 const hexToRgba = (hex: string, alpha = 1): string => {
-  const r = Number.parseInt(hex.slice(1, 3), 16)
-  const g = Number.parseInt(hex.slice(3, 5), 16)
-  const b = Number.parseInt(hex.slice(5, 7), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
+	const r = Number.parseInt(hex.slice(1, 3), 16);
+	const g = Number.parseInt(hex.slice(3, 5), 16);
+	const b = Number.parseInt(hex.slice(5, 7), 16);
+	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
 
 const rgbaToHex = (rgba: string): string => {
-  const match = rgba.match(/rgba?$$(\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?$$/)
-  if (!match) return "#000000"
-  const r = Number.parseInt(match[1]).toString(16).padStart(2, "0")
-  const g = Number.parseInt(match[2]).toString(16).padStart(2, "0")
-  const b = Number.parseInt(match[3]).toString(16).padStart(2, "0")
-  return `#${r}${g}${b}`
-}
+	const match = rgba.match(/rgba?$$(\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?$$/);
+	if (!match) return "#000000";
+	const r = Number.parseInt(match[1]).toString(16).padStart(2, "0");
+	const g = Number.parseInt(match[2]).toString(16).padStart(2, "0");
+	const b = Number.parseInt(match[3]).toString(16).padStart(2, "0");
+	return `#${r}${g}${b}`;
+};
 
 export default function AnnotationCanvas() {
-  const { theme, resolvedTheme } = useTheme()
-  const { toast } = useToast()
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [mainImage, setMainImage] = useState<HTMLImageElement | null>(null)
-  const {
-    historyLog,
-    isLoadingHistory,
-    activeHistoryEntryId,
-    addOrUpdateHistoryEntry,
-    loadHistoryEntry,
-    loadAndActivateEntryFromMetadata,
-    deleteHistoryEntry,
-    thumbnailCache,
-    setActiveHistoryEntryId,
-  } = useImageHistory()
+	const { theme, resolvedTheme } = useTheme();
+	const { toast } = useToast();
+	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const [mainImage, setMainImage] = useState<HTMLImageElement | null>(null);
+	const {
+		historyLog,
+		isLoadingHistory,
+		activeHistoryEntryId,
+		addOrUpdateHistoryEntry,
+		loadHistoryEntry,
+		loadAndActivateEntryFromMetadata,
+		deleteHistoryEntry,
+		thumbnailCache,
+		setActiveHistoryEntryId,
+	} = useImageHistory();
 
-  const annotationHistory = useAnnotationHistory<Annotation[]>([])
-  const [currentTool, setCurrentTool] = useState<Tool>("cursor")
-  const [isDrawing, setIsDrawing] = useState(false)
-  const [startPoint, setStartPoint] = useState<Point | null>(null)
-  const [currentEndPoint, setCurrentEndPoint] = useState<Point | null>(null)
-  const [currentText, setCurrentText] = useState("")
-  const [textInputPosition, setTextInputPosition] = useState<Point | null>(null)
-  const [currentHighlightPoints, setCurrentHighlightPoints] = useState<Point[]>([])
-  const [strokeColor, setStrokeColor] = useState(DEFAULT_STROKE_COLOR)
-  const [fillColor, setFillColor] = useState(DEFAULT_FILL_COLOR)
-  const [useFill, setUseFill] = useState(false)
-  const [strokeWidth, setStrokeWidth] = useState(3)
-  const [spotlightDarkness, setSpotlightDarkness] = useState(0.7)
-  const [pixelSize, setPixelSize] = useState(DEFAULT_PIXEL_SIZE)
-  const [fontSize, setFontSize] = useState(24)
-  const [fontFamily, setFontFamily] = useState("Arial")
-  const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR)
-  const [highlightStrokeWidth, setHighlightStrokeWidth] = useState(15)
-  const [isCanvasLoading, setIsCanvasLoading] = useState(false)
-  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
-  const [isDraggingAnnotation, setIsDraggingAnnotation] = useState(false)
-  const [dragOffset, setDragOffset] = useState<Point | null>(null)
-  const textInputFieldRef = useRef<HTMLInputElement>(null)
-  const textCardRef = useRef<HTMLDivElement>(null)
-  const canvasContainerRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+	const annotationHistory = useAnnotationHistory<Annotation[]>([]);
+	const [currentTool, setCurrentTool] = useState<Tool>("cursor");
+	const [isDrawing, setIsDrawing] = useState(false);
+	const [startPoint, setStartPoint] = useState<Point | null>(null);
+	const [currentEndPoint, setCurrentEndPoint] = useState<Point | null>(null);
+	const [currentText, setCurrentText] = useState("");
+	const [textInputPosition, setTextInputPosition] = useState<Point | null>(
+		null,
+	);
+	const [currentHighlightPoints, setCurrentHighlightPoints] = useState<Point[]>(
+		[],
+	);
+	const [strokeColor, setStrokeColor] = useState(DEFAULT_STROKE_COLOR);
+	const [fillColor, setFillColor] = useState(DEFAULT_FILL_COLOR);
+	const [useFill, setUseFill] = useState(false);
+	const [strokeWidth, setStrokeWidth] = useState(3);
+	const [spotlightDarkness, setSpotlightDarkness] = useState(0.7);
+	const [pixelSize, setPixelSize] = useState(DEFAULT_PIXEL_SIZE);
+	const [fontSize, setFontSize] = useState(24);
+	const [fontFamily, setFontFamily] = useState("Arial");
+	const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR);
+	const [highlightStrokeWidth, setHighlightStrokeWidth] = useState(15);
+	const [isCanvasLoading, setIsCanvasLoading] = useState(false);
+	const [selectedAnnotationId, setSelectedAnnotationId] = useState<
+		string | null
+	>(null);
+	const [isDraggingAnnotation, setIsDraggingAnnotation] = useState(false);
+	const [dragOffset, setDragOffset] = useState<Point | null>(null);
+	const textInputFieldRef = useRef<HTMLInputElement>(null);
+	const textCardRef = useRef<HTMLDivElement>(null);
+	const canvasContainerRef = useRef<HTMLDivElement>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const getSelectedAnnotation = useCallback(() => {
-    if (!selectedAnnotationId) return null
-    return annotationHistory.state.find((a) => a.id === selectedAnnotationId) || null
-  }, [annotationHistory.state, selectedAnnotationId])
+	const getSelectedAnnotation = useCallback(() => {
+		if (!selectedAnnotationId) return null;
+		return (
+			annotationHistory.state.find((a) => a.id === selectedAnnotationId) || null
+		);
+	}, [annotationHistory.state, selectedAnnotationId]);
 
-  useEffect(() => {
-    if (currentTool === "cursor" && selectedAnnotationId) {
-      const selectedAnno = getSelectedAnnotation()
-      if (selectedAnno) {
-        switch (selectedAnno.type) {
-          case "rectangle":
-          case "ellipse":
-            setStrokeColor(selectedAnno.strokeColor)
-            setStrokeWidth(selectedAnno.strokeWidth)
-            setUseFill(!!selectedAnno.fillColor)
-            setFillColor(selectedAnno.fillColor || DEFAULT_FILL_COLOR)
-            break
-          case "text":
-            setStrokeColor(selectedAnno.color)
-            setFontSize(selectedAnno.fontSize)
-            setFontFamily(selectedAnno.fontFamily)
-            break
-          case "arrow":
-          case "line":
-            setStrokeColor(selectedAnno.color)
-            setStrokeWidth(selectedAnno.strokeWidth)
-            break
-          case "highlight":
-            setHighlightColor(selectedAnno.color)
-            setHighlightStrokeWidth(selectedAnno.strokeWidth)
-            break
-          case "pixelate-area":
-            setPixelSize(selectedAnno.pixelSize)
-            break
-        }
-      }
-    }
-  }, [selectedAnnotationId, currentTool, getSelectedAnnotation])
+	useEffect(() => {
+		if (currentTool === "cursor" && selectedAnnotationId) {
+			const selectedAnno = getSelectedAnnotation();
+			if (selectedAnno) {
+				switch (selectedAnno.type) {
+					case "rectangle":
+					case "ellipse":
+						setStrokeColor(selectedAnno.strokeColor);
+						setStrokeWidth(selectedAnno.strokeWidth);
+						setUseFill(!!selectedAnno.fillColor);
+						setFillColor(selectedAnno.fillColor || DEFAULT_FILL_COLOR);
+						break;
+					case "text":
+						setStrokeColor(selectedAnno.color);
+						setFontSize(selectedAnno.fontSize);
+						setFontFamily(selectedAnno.fontFamily);
+						break;
+					case "arrow":
+					case "line":
+						setStrokeColor(selectedAnno.color);
+						setStrokeWidth(selectedAnno.strokeWidth);
+						break;
+					case "highlight":
+						setHighlightColor(selectedAnno.color);
+						setHighlightStrokeWidth(selectedAnno.strokeWidth);
+						break;
+					case "pixelate-area":
+						setPixelSize(selectedAnno.pixelSize);
+						break;
+				}
+			}
+		}
+	}, [selectedAnnotationId, currentTool, getSelectedAnnotation]);
 
-  const handleSettingChange = useCallback(
-    <K extends keyof Annotation, V>(propName: K, value: V) => {
-      if (currentTool === "cursor" && selectedAnnotationId) {
-        annotationHistory.set((prevAnnos) =>
-          prevAnnos.map((anno) => {
-            if (anno.id === selectedAnnotationId) {
-              const updatedAnno = { ...anno, [propName]: value }
-              if (propName === "useFill") {
-                ;(updatedAnno as RectangleAnnotation | EllipseAnnotation).fillColor = value ? fillColor : undefined
-              }
-              if (
-                propName === "strokeColor" &&
-                (anno.type === "text" || anno.type === "arrow" || anno.type === "line")
-              ) {
-                ;(updatedAnno as TextAnnotation | ArrowAnnotation | LineAnnotation).color = value as string
-              }
-              if (propName === "fillColor" && (anno.type === "rectangle" || anno.type === "ellipse")) {
-                ;(updatedAnno as RectangleAnnotation | EllipseAnnotation).fillColor = value as string
-              }
-              if (propName === "highlightColor" && anno.type === "highlight") {
-                ;(updatedAnno as HighlightAnnotation).color = value as string
-              }
-              return updatedAnno
-            }
-            return anno
-          }),
-        )
-      }
-    },
-    [currentTool, selectedAnnotationId, annotationHistory, fillColor],
-  )
+	const handleSettingChange = useCallback(
+		<K extends keyof Annotation, V>(propName: K, value: V) => {
+			if (currentTool === "cursor" && selectedAnnotationId) {
+				annotationHistory.set((prevAnnos) =>
+					prevAnnos.map((anno) => {
+						if (anno.id === selectedAnnotationId) {
+							const updatedAnno = { ...anno, [propName]: value };
+							if (propName === "useFill") {
+								(
+									updatedAnno as RectangleAnnotation | EllipseAnnotation
+								).fillColor = value ? fillColor : undefined;
+							}
+							if (
+								propName === "strokeColor" &&
+								(anno.type === "text" ||
+									anno.type === "arrow" ||
+									anno.type === "line")
+							) {
+								(
+									updatedAnno as
+										| TextAnnotation
+										| ArrowAnnotation
+										| LineAnnotation
+								).color = value as string;
+							}
+							if (
+								propName === "fillColor" &&
+								(anno.type === "rectangle" || anno.type === "ellipse")
+							) {
+								(
+									updatedAnno as RectangleAnnotation | EllipseAnnotation
+								).fillColor = value as string;
+							}
+							if (propName === "highlightColor" && anno.type === "highlight") {
+								(updatedAnno as HighlightAnnotation).color = value as string;
+							}
+							return updatedAnno;
+						}
+						return anno;
+					}),
+				);
+			}
+		},
+		[currentTool, selectedAnnotationId, annotationHistory, fillColor],
+	);
 
-  const drawCanvas = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
+	const drawCanvas = useCallback(() => {
+		const canvas = canvasRef.current;
+		if (!canvas) return;
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!mainImage) {
-      const canvasEl = canvasRef.current
-      if (!canvasEl) return
+		if (!mainImage) {
+			const canvasEl = canvasRef.current;
+			if (!canvasEl) return;
 
-      // Improved theme detection for canvas placeholder
-      let placeholderBgHsl = "210 40% 96.1%" // Light theme default
-      let placeholderTextHsl = "215.4 16.3% 46.9%" // Light theme default
+			// Improved theme detection for canvas placeholder
+			let placeholderBgHsl = "210 40% 96.1%"; // Light theme default
+			let placeholderTextHsl = "215.4 16.3% 46.9%"; // Light theme default
 
-      // Check multiple sources for current theme
-      const isDarkMode =
-        theme === "dark" ||
-        resolvedTheme === "dark" ||
-        document.documentElement.classList.contains("dark") ||
-        window.matchMedia("(prefers-color-scheme: dark)").matches
+			// Check multiple sources for current theme
+			const isDarkMode =
+				theme === "dark" ||
+				resolvedTheme === "dark" ||
+				document.documentElement.classList.contains("dark") ||
+				window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-      if (isDarkMode) {
-        placeholderBgHsl = "217.2 32.6% 17.5%" // Dark theme
-        placeholderTextHsl = "215 20.2% 65.1%" // Dark theme
-      }
+			if (isDarkMode) {
+				placeholderBgHsl = "217.2 32.6% 17.5%"; // Dark theme
+				placeholderTextHsl = "215 20.2% 65.1%"; // Dark theme
+			}
 
-      // Try to read actual CSS variables as override
-      try {
-        const computedStyle = getComputedStyle(document.documentElement)
-        const mutedVar = computedStyle.getPropertyValue("--muted").trim()
-        const mutedFgVar = computedStyle.getPropertyValue("--muted-foreground").trim()
+			// Try to read actual CSS variables as override
+			try {
+				const computedStyle = getComputedStyle(document.documentElement);
+				const mutedVar = computedStyle.getPropertyValue("--muted").trim();
+				const mutedFgVar = computedStyle
+					.getPropertyValue("--muted-foreground")
+					.trim();
 
-        if (mutedVar) {
-          placeholderBgHsl = mutedVar
-        }
-        if (mutedFgVar) {
-          placeholderTextHsl = mutedFgVar
-        }
-      } catch (e) {
-        console.warn("Could not read theme CSS variables for canvas placeholder.", e)
-      }
+				if (mutedVar) {
+					placeholderBgHsl = mutedVar;
+				}
+				if (mutedFgVar) {
+					placeholderTextHsl = mutedFgVar;
+				}
+			} catch (e) {
+				console.warn(
+					"Could not read theme CSS variables for canvas placeholder.",
+					e,
+				);
+			}
 
-      ctx.fillStyle = `hsl(${placeholderBgHsl})`
-      ctx.fillRect(0, 0, canvasEl.width, canvasEl.height)
-      ctx.fillStyle = `hsl(${placeholderTextHsl})`
-      ctx.font = "20px Arial"
-      ctx.textAlign = "center"
-      ctx.fillText("Drop an image here or click to upload", canvasEl.width / 2, canvasEl.height / 2)
-      return
-    }
+			ctx.fillStyle = `hsl(${placeholderBgHsl})`;
+			ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+			ctx.fillStyle = `hsl(${placeholderTextHsl})`;
+			ctx.font = "20px Arial";
+			ctx.textAlign = "center";
+			ctx.fillText(
+				"Drop an image here or click to upload",
+				canvasEl.width / 2,
+				canvasEl.height / 2,
+			);
+			return;
+		}
 
-    ctx.drawImage(mainImage, 0, 0, canvas.width, canvas.height)
+		ctx.drawImage(mainImage, 0, 0, canvas.width, canvas.height);
 
-    const pixelateAreas = annotationHistory.state.filter((a) => a.type === "pixelate-area") as PixelateAreaAnnotation[]
-    const spotlightAreas = annotationHistory.state.filter(
-      (a) => a.type === "spotlight-area",
-    ) as SpotlightAreaAnnotation[]
-    const shapeAnnotations = annotationHistory.state.filter(
-      (a) => a.type !== "pixelate-area" && a.type !== "spotlight-area",
-    )
+		const pixelateAreas = annotationHistory.state.filter(
+			(a) => a.type === "pixelate-area",
+		) as PixelateAreaAnnotation[];
+		const spotlightAreas = annotationHistory.state.filter(
+			(a) => a.type === "spotlight-area",
+		) as SpotlightAreaAnnotation[];
+		const shapeAnnotations = annotationHistory.state.filter(
+			(a) => a.type !== "pixelate-area" && a.type !== "spotlight-area",
+		);
 
-    pixelateAreas.forEach((pixelate) => {
-      const tempWidth = Math.max(1, Math.ceil(pixelate.width / pixelate.pixelSize))
-      const tempHeight = Math.max(1, Math.ceil(pixelate.height / pixelate.pixelSize))
-      const tempCanvas = document.createElement("canvas")
-      tempCanvas.width = tempWidth
-      tempCanvas.height = tempHeight
-      const tempCtx = tempCanvas.getContext("2d")
-      if (tempCtx) {
-        tempCtx.drawImage(
-          mainImage,
-          pixelate.x,
-          pixelate.y,
-          pixelate.width,
-          pixelate.height,
-          0,
-          0,
-          tempWidth,
-          tempHeight,
-        )
-        ctx.save()
-        ctx.imageSmoothingEnabled = false
-        ctx.drawImage(tempCanvas, 0, 0, tempWidth, tempHeight, pixelate.x, pixelate.y, pixelate.width, pixelate.height)
-        ctx.restore()
-      }
-    })
+		pixelateAreas.forEach((pixelate) => {
+			const tempWidth = Math.max(
+				1,
+				Math.ceil(pixelate.width / pixelate.pixelSize),
+			);
+			const tempHeight = Math.max(
+				1,
+				Math.ceil(pixelate.height / pixelate.pixelSize),
+			);
+			const tempCanvas = document.createElement("canvas");
+			tempCanvas.width = tempWidth;
+			tempCanvas.height = tempHeight;
+			const tempCtx = tempCanvas.getContext("2d");
+			if (tempCtx) {
+				tempCtx.drawImage(
+					mainImage,
+					pixelate.x,
+					pixelate.y,
+					pixelate.width,
+					pixelate.height,
+					0,
+					0,
+					tempWidth,
+					tempHeight,
+				);
+				ctx.save();
+				ctx.imageSmoothingEnabled = false;
+				ctx.drawImage(
+					tempCanvas,
+					0,
+					0,
+					tempWidth,
+					tempHeight,
+					pixelate.x,
+					pixelate.y,
+					pixelate.width,
+					pixelate.height,
+				);
+				ctx.restore();
+			}
+		});
 
-    if (spotlightAreas.length > 0) {
-      ctx.save()
-      ctx.fillStyle = `rgba(0, 0, 0, ${spotlightDarkness})`
-      ctx.beginPath()
-      ctx.rect(0, 0, canvas.width, canvas.height)
-      spotlightAreas.forEach((spot) => {
-        ctx.moveTo(spot.x, spot.y)
-        ctx.lineTo(spot.x, spot.y + spot.height)
-        ctx.lineTo(spot.x + spot.width, spot.y + spot.height)
-        ctx.lineTo(spot.x + spot.width, spot.y)
-        ctx.closePath()
-      })
-      ctx.fill("evenodd")
-      ctx.restore()
-    }
+		if (spotlightAreas.length > 0) {
+			ctx.save();
+			ctx.fillStyle = `rgba(0, 0, 0, ${spotlightDarkness})`;
+			ctx.beginPath();
+			ctx.rect(0, 0, canvas.width, canvas.height);
+			spotlightAreas.forEach((spot) => {
+				ctx.moveTo(spot.x, spot.y);
+				ctx.lineTo(spot.x, spot.y + spot.height);
+				ctx.lineTo(spot.x + spot.width, spot.y + spot.height);
+				ctx.lineTo(spot.x + spot.width, spot.y);
+				ctx.closePath();
+			});
+			ctx.fill("evenodd");
+			ctx.restore();
+		}
 
-    shapeAnnotations.forEach((anno) => {
-      ctx.save()
-      if (anno.type === "rectangle") {
-        const rect = anno as RectangleAnnotation
-        ctx.strokeStyle = rect.strokeColor
-        ctx.lineWidth = rect.strokeWidth
-        if (rect.fillColor) {
-          ctx.fillStyle = rect.fillColor
-          ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
-        }
-        ctx.strokeRect(rect.x, rect.y, rect.width, rect.height)
-      } else if (anno.type === "text") {
-        const textAnno = anno as TextAnnotation
-        ctx.fillStyle = textAnno.color
-        ctx.font = `${textAnno.fontSize}px ${textAnno.fontFamily}`
-        ctx.textAlign = "left"
-        ctx.textBaseline = "top"
-        ctx.fillText(textAnno.text, textAnno.x, textAnno.y)
-      } else if (anno.type === "arrow") {
-        const arrow = anno as ArrowAnnotation
-        ctx.strokeStyle = arrow.color
-        ctx.lineWidth = arrow.strokeWidth
-        ctx.fillStyle = arrow.color
-        const angle = Math.atan2(arrow.endY - arrow.startY, arrow.endX - arrow.startX)
-        const headlen = 10 + arrow.strokeWidth * 2
-        const pullBackDistance = headlen * Math.cos(Math.PI / 6)
-        const shaftEndX = arrow.endX - pullBackDistance * Math.cos(angle)
-        const shaftEndY = arrow.endY - pullBackDistance * Math.sin(angle)
-        ctx.beginPath()
-        ctx.moveTo(arrow.startX, arrow.startY)
-        ctx.lineTo(shaftEndX, shaftEndY)
-        ctx.stroke()
-        ctx.beginPath()
-        ctx.moveTo(arrow.endX, arrow.endY)
-        ctx.lineTo(
-          arrow.endX - headlen * Math.cos(angle - Math.PI / 6),
-          arrow.endY - headlen * Math.sin(angle - Math.PI / 6),
-        )
-        ctx.lineTo(
-          arrow.endX - headlen * Math.cos(angle + Math.PI / 6),
-          arrow.endY - headlen * Math.sin(angle + Math.PI / 6),
-        )
-        ctx.closePath()
-        ctx.fill()
-      } else if (anno.type === "ellipse") {
-        const ellipse = anno as EllipseAnnotation
-        ctx.strokeStyle = ellipse.strokeColor
-        ctx.lineWidth = ellipse.strokeWidth
-        ctx.beginPath()
-        ctx.ellipse(ellipse.centerX, ellipse.centerY, ellipse.radiusX, ellipse.radiusY, 0, 0, 2 * Math.PI)
-        if (ellipse.fillColor) {
-          ctx.fillStyle = ellipse.fillColor
-          ctx.fill()
-        }
-        ctx.stroke()
-      } else if (anno.type === "line") {
-        const line = anno as LineAnnotation
-        ctx.strokeStyle = line.color
-        ctx.lineWidth = line.strokeWidth
-        ctx.beginPath()
-        ctx.moveTo(line.startX, line.startY)
-        ctx.lineTo(line.endX, line.endY)
-        ctx.stroke()
-      } else if (anno.type === "highlight") {
-        const highlight = anno as HighlightAnnotation
-        ctx.strokeStyle = highlight.color
-        ctx.lineWidth = highlight.strokeWidth
-        ctx.lineCap = "round"
-        ctx.lineJoin = "round"
-        ctx.beginPath()
-        if (highlight.points.length > 0) {
-          ctx.moveTo(highlight.points[0].x, highlight.points[0].y)
-          for (let i = 1; i < highlight.points.length; i++) {
-            ctx.lineTo(highlight.points[i].x, highlight.points[i].y)
-          }
-          ctx.stroke()
-        }
-      }
-      if (selectedAnnotationId === anno.id && currentTool === "cursor") {
-        ctx.strokeStyle = "rgba(0, 100, 255, 0.7)"
-        ctx.lineWidth = 2
-        ctx.setLineDash([4, 4])
-        const padding = 5
-        ctx.strokeRect(anno.x - padding / 2, anno.y - padding / 2, anno.width + padding, anno.height + padding)
-        ctx.setLineDash([])
-      }
-      ctx.restore()
-    })
+		shapeAnnotations.forEach((anno) => {
+			ctx.save();
+			if (anno.type === "rectangle") {
+				const rect = anno as RectangleAnnotation;
+				ctx.strokeStyle = rect.strokeColor;
+				ctx.lineWidth = rect.strokeWidth;
+				if (rect.fillColor) {
+					ctx.fillStyle = rect.fillColor;
+					ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+				}
+				ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+			} else if (anno.type === "text") {
+				const textAnno = anno as TextAnnotation;
+				ctx.fillStyle = textAnno.color;
+				ctx.font = `${textAnno.fontSize}px ${textAnno.fontFamily}`;
+				ctx.textAlign = "left";
+				ctx.textBaseline = "top";
+				ctx.fillText(textAnno.text, textAnno.x, textAnno.y);
+			} else if (anno.type === "arrow") {
+				const arrow = anno as ArrowAnnotation;
+				ctx.strokeStyle = arrow.color;
+				ctx.lineWidth = arrow.strokeWidth;
+				ctx.fillStyle = arrow.color;
+				const angle = Math.atan2(
+					arrow.endY - arrow.startY,
+					arrow.endX - arrow.startX,
+				);
+				const headlen = 10 + arrow.strokeWidth * 2;
+				const pullBackDistance = headlen * Math.cos(Math.PI / 6);
+				const shaftEndX = arrow.endX - pullBackDistance * Math.cos(angle);
+				const shaftEndY = arrow.endY - pullBackDistance * Math.sin(angle);
+				ctx.beginPath();
+				ctx.moveTo(arrow.startX, arrow.startY);
+				ctx.lineTo(shaftEndX, shaftEndY);
+				ctx.stroke();
+				ctx.beginPath();
+				ctx.moveTo(arrow.endX, arrow.endY);
+				ctx.lineTo(
+					arrow.endX - headlen * Math.cos(angle - Math.PI / 6),
+					arrow.endY - headlen * Math.sin(angle - Math.PI / 6),
+				);
+				ctx.lineTo(
+					arrow.endX - headlen * Math.cos(angle + Math.PI / 6),
+					arrow.endY - headlen * Math.sin(angle + Math.PI / 6),
+				);
+				ctx.closePath();
+				ctx.fill();
+			} else if (anno.type === "ellipse") {
+				const ellipse = anno as EllipseAnnotation;
+				ctx.strokeStyle = ellipse.strokeColor;
+				ctx.lineWidth = ellipse.strokeWidth;
+				ctx.beginPath();
+				ctx.ellipse(
+					ellipse.centerX,
+					ellipse.centerY,
+					ellipse.radiusX,
+					ellipse.radiusY,
+					0,
+					0,
+					2 * Math.PI,
+				);
+				if (ellipse.fillColor) {
+					ctx.fillStyle = ellipse.fillColor;
+					ctx.fill();
+				}
+				ctx.stroke();
+			} else if (anno.type === "line") {
+				const line = anno as LineAnnotation;
+				ctx.strokeStyle = line.color;
+				ctx.lineWidth = line.strokeWidth;
+				ctx.beginPath();
+				ctx.moveTo(line.startX, line.startY);
+				ctx.lineTo(line.endX, line.endY);
+				ctx.stroke();
+			} else if (anno.type === "highlight") {
+				const highlight = anno as HighlightAnnotation;
+				ctx.strokeStyle = highlight.color;
+				ctx.lineWidth = highlight.strokeWidth;
+				ctx.lineCap = "round";
+				ctx.lineJoin = "round";
+				ctx.beginPath();
+				if (highlight.points.length > 0) {
+					ctx.moveTo(highlight.points[0].x, highlight.points[0].y);
+					for (let i = 1; i < highlight.points.length; i++) {
+						ctx.lineTo(highlight.points[i].x, highlight.points[i].y);
+					}
+					ctx.stroke();
+				}
+			}
+			if (selectedAnnotationId === anno.id && currentTool === "cursor") {
+				ctx.strokeStyle = "rgba(0, 100, 255, 0.7)";
+				ctx.lineWidth = 2;
+				ctx.setLineDash([4, 4]);
+				const padding = 5;
+				ctx.strokeRect(
+					anno.x - padding / 2,
+					anno.y - padding / 2,
+					anno.width + padding,
+					anno.height + padding,
+				);
+				ctx.setLineDash([]);
+			}
+			ctx.restore();
+		});
 
-    if (isDrawing && startPoint && currentEndPoint && currentTool !== "cursor") {
-      ctx.save()
-      const x = Math.min(startPoint.x, currentEndPoint.x)
-      const y = Math.min(startPoint.y, currentEndPoint.y)
-      const width = Math.abs(startPoint.x - currentEndPoint.x)
-      const height = Math.abs(startPoint.y - currentEndPoint.y)
+		if (
+			isDrawing &&
+			startPoint &&
+			currentEndPoint &&
+			currentTool !== "cursor"
+		) {
+			ctx.save();
+			const x = Math.min(startPoint.x, currentEndPoint.x);
+			const y = Math.min(startPoint.y, currentEndPoint.y);
+			const width = Math.abs(startPoint.x - currentEndPoint.x);
+			const height = Math.abs(startPoint.y - currentEndPoint.y);
 
-      if (currentTool === "rectangle") {
-        ctx.strokeStyle = strokeColor
-        ctx.lineWidth = strokeWidth
-        if (useFill && fillColor) {
-          ctx.fillStyle = fillColor
-          ctx.fillRect(x, y, width, height)
-        }
-        ctx.strokeRect(x, y, width, height)
-      } else if (currentTool === "spotlight-area" || currentTool === "pixelate-area") {
-        ctx.strokeStyle = "rgba(0,0,255,0.5)"
-        ctx.lineWidth = 1
-        ctx.setLineDash([5, 5])
-        ctx.strokeRect(x, y, width, height)
-        ctx.setLineDash([])
-      } else if (currentTool === "arrow" || currentTool === "line") {
-        ctx.strokeStyle = strokeColor
-        ctx.lineWidth = strokeWidth
-        if (currentTool === "arrow") {
-          const angle = Math.atan2(currentEndPoint.y - startPoint.y, currentEndPoint.x - startPoint.x)
-          const headlen = 10 + strokeWidth * 2
-          const pullBackDistance = headlen * Math.cos(Math.PI / 6)
-          const shaftEndX = currentEndPoint.x - pullBackDistance * Math.cos(angle)
-          const shaftEndY = currentEndPoint.y - pullBackDistance * Math.sin(angle)
-          ctx.beginPath()
-          ctx.moveTo(startPoint.x, startPoint.y)
-          ctx.lineTo(shaftEndX, shaftEndY)
-          ctx.stroke()
-          ctx.beginPath()
-          ctx.moveTo(currentEndPoint.x, currentEndPoint.y)
-          ctx.lineTo(
-            currentEndPoint.x - headlen * Math.cos(angle - Math.PI / 6),
-            currentEndPoint.y - headlen * Math.sin(angle - Math.PI / 6),
-          )
-          ctx.lineTo(
-            currentEndPoint.x - headlen * Math.cos(angle + Math.PI / 6),
-            currentEndPoint.y - headlen * Math.sin(angle + Math.PI / 6),
-          )
-          ctx.closePath()
-          ctx.fillStyle = strokeColor
-          ctx.fill()
-        } else {
-          ctx.beginPath()
-          ctx.moveTo(startPoint.x, startPoint.y)
-          ctx.lineTo(currentEndPoint.x, currentEndPoint.y)
-          ctx.stroke()
-        }
-      } else if (currentTool === "ellipse") {
-        const radiusX = width / 2
-        const radiusY = height / 2
-        const centerX = x + radiusX
-        const centerY = y + radiusY
-        ctx.strokeStyle = strokeColor
-        ctx.lineWidth = strokeWidth
-        ctx.beginPath()
-        ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI)
-        if (useFill && fillColor) {
-          ctx.fillStyle = fillColor
-          ctx.fill()
-        }
-        ctx.stroke()
-      } else if (currentTool === "highlight" && currentHighlightPoints.length > 0) {
-        ctx.strokeStyle = highlightColor
-        ctx.lineWidth = highlightStrokeWidth
-        ctx.lineCap = "round"
-        ctx.lineJoin = "round"
-        ctx.beginPath()
-        ctx.moveTo(currentHighlightPoints[0].x, currentHighlightPoints[0].y)
-        for (let i = 1; i < currentHighlightPoints.length; i++) {
-          ctx.lineTo(currentHighlightPoints[i].x, currentHighlightPoints[i].y)
-        }
-        ctx.stroke()
-      }
-      ctx.restore()
-    }
-  }, [
-    mainImage,
-    annotationHistory.state,
-    isDrawing,
-    startPoint,
-    currentEndPoint,
-    currentTool,
-    strokeColor,
-    fillColor,
-    useFill,
-    strokeWidth,
-    spotlightDarkness,
-    pixelSize,
-    fontSize,
-    fontFamily,
-    highlightColor,
-    highlightStrokeWidth,
-    currentHighlightPoints,
-    selectedAnnotationId,
-    theme,
-    resolvedTheme,
-  ])
+			if (currentTool === "rectangle") {
+				ctx.strokeStyle = strokeColor;
+				ctx.lineWidth = strokeWidth;
+				if (useFill && fillColor) {
+					ctx.fillStyle = fillColor;
+					ctx.fillRect(x, y, width, height);
+				}
+				ctx.strokeRect(x, y, width, height);
+			} else if (
+				currentTool === "spotlight-area" ||
+				currentTool === "pixelate-area"
+			) {
+				ctx.strokeStyle = "rgba(0,0,255,0.5)";
+				ctx.lineWidth = 1;
+				ctx.setLineDash([5, 5]);
+				ctx.strokeRect(x, y, width, height);
+				ctx.setLineDash([]);
+			} else if (currentTool === "arrow" || currentTool === "line") {
+				ctx.strokeStyle = strokeColor;
+				ctx.lineWidth = strokeWidth;
+				if (currentTool === "arrow") {
+					const angle = Math.atan2(
+						currentEndPoint.y - startPoint.y,
+						currentEndPoint.x - startPoint.x,
+					);
+					const headlen = 10 + strokeWidth * 2;
+					const pullBackDistance = headlen * Math.cos(Math.PI / 6);
+					const shaftEndX =
+						currentEndPoint.x - pullBackDistance * Math.cos(angle);
+					const shaftEndY =
+						currentEndPoint.y - pullBackDistance * Math.sin(angle);
+					ctx.beginPath();
+					ctx.moveTo(startPoint.x, startPoint.y);
+					ctx.lineTo(shaftEndX, shaftEndY);
+					ctx.stroke();
+					ctx.beginPath();
+					ctx.moveTo(currentEndPoint.x, currentEndPoint.y);
+					ctx.lineTo(
+						currentEndPoint.x - headlen * Math.cos(angle - Math.PI / 6),
+						currentEndPoint.y - headlen * Math.sin(angle - Math.PI / 6),
+					);
+					ctx.lineTo(
+						currentEndPoint.x - headlen * Math.cos(angle + Math.PI / 6),
+						currentEndPoint.y - headlen * Math.sin(angle + Math.PI / 6),
+					);
+					ctx.closePath();
+					ctx.fillStyle = strokeColor;
+					ctx.fill();
+				} else {
+					ctx.beginPath();
+					ctx.moveTo(startPoint.x, startPoint.y);
+					ctx.lineTo(currentEndPoint.x, currentEndPoint.y);
+					ctx.stroke();
+				}
+			} else if (currentTool === "ellipse") {
+				const radiusX = width / 2;
+				const radiusY = height / 2;
+				const centerX = x + radiusX;
+				const centerY = y + radiusY;
+				ctx.strokeStyle = strokeColor;
+				ctx.lineWidth = strokeWidth;
+				ctx.beginPath();
+				ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+				if (useFill && fillColor) {
+					ctx.fillStyle = fillColor;
+					ctx.fill();
+				}
+				ctx.stroke();
+			} else if (
+				currentTool === "highlight" &&
+				currentHighlightPoints.length > 0
+			) {
+				ctx.strokeStyle = highlightColor;
+				ctx.lineWidth = highlightStrokeWidth;
+				ctx.lineCap = "round";
+				ctx.lineJoin = "round";
+				ctx.beginPath();
+				ctx.moveTo(currentHighlightPoints[0].x, currentHighlightPoints[0].y);
+				for (let i = 1; i < currentHighlightPoints.length; i++) {
+					ctx.lineTo(currentHighlightPoints[i].x, currentHighlightPoints[i].y);
+				}
+				ctx.stroke();
+			}
+			ctx.restore();
+		}
+	}, [
+		mainImage,
+		annotationHistory.state,
+		isDrawing,
+		startPoint,
+		currentEndPoint,
+		currentTool,
+		strokeColor,
+		fillColor,
+		useFill,
+		strokeWidth,
+		spotlightDarkness,
+		pixelSize,
+		fontSize,
+		fontFamily,
+		highlightColor,
+		highlightStrokeWidth,
+		currentHighlightPoints,
+		selectedAnnotationId,
+		theme,
+		resolvedTheme,
+	]);
 
-  useEffect(() => {
-    drawCanvas()
-  }, [drawCanvas])
+	useEffect(() => {
+		drawCanvas();
+	}, [drawCanvas]);
 
-  const addOrUpdateHistoryEntryRef = useRef(addOrUpdateHistoryEntry)
-  useEffect(() => {
-    addOrUpdateHistoryEntryRef.current = addOrUpdateHistoryEntry
-  }, [addOrUpdateHistoryEntry])
+	const addOrUpdateHistoryEntryRef = useRef(addOrUpdateHistoryEntry);
+	useEffect(() => {
+		addOrUpdateHistoryEntryRef.current = addOrUpdateHistoryEntry;
+	}, [addOrUpdateHistoryEntry]);
 
-  const saveCurrentAnnotationsToHistory = useCallback(async () => {
-    if (activeHistoryEntryId && mainImage && annotationHistory) {
-      await addOrUpdateHistoryEntryRef.current(null, annotationHistory.state, activeHistoryEntryId)
-    }
-  }, [activeHistoryEntryId, mainImage, annotationHistory])
+	const saveCurrentAnnotationsToHistory = useCallback(async () => {
+		if (activeHistoryEntryId && mainImage && annotationHistory) {
+			await addOrUpdateHistoryEntryRef.current(
+				null,
+				annotationHistory.state,
+				activeHistoryEntryId,
+			);
+		}
+	}, [activeHistoryEntryId, mainImage, annotationHistory]);
 
-  const debouncedSaveAnnotationsRef = useRef<NodeJS.Timeout | null>(null)
-  useEffect(() => {
-    if (mainImage && activeHistoryEntryId) {
-      if (debouncedSaveAnnotationsRef.current) {
-        clearTimeout(debouncedSaveAnnotationsRef.current)
-      }
-      debouncedSaveAnnotationsRef.current = setTimeout(() => {
-        saveCurrentAnnotationsToHistory()
-      }, 1000)
-    }
-    return () => {
-      if (debouncedSaveAnnotationsRef.current) {
-        clearTimeout(debouncedSaveAnnotationsRef.current)
-      }
-    }
-  }, [annotationHistory, mainImage, activeHistoryEntryId, saveCurrentAnnotationsToHistory])
+	const debouncedSaveAnnotationsRef = useRef<NodeJS.Timeout | null>(null);
+	useEffect(() => {
+		if (mainImage && activeHistoryEntryId) {
+			if (debouncedSaveAnnotationsRef.current) {
+				clearTimeout(debouncedSaveAnnotationsRef.current);
+			}
+			debouncedSaveAnnotationsRef.current = setTimeout(() => {
+				saveCurrentAnnotationsToHistory();
+			}, 1000);
+		}
+		return () => {
+			if (debouncedSaveAnnotationsRef.current) {
+				clearTimeout(debouncedSaveAnnotationsRef.current);
+			}
+		};
+	}, [
+		annotationHistory,
+		mainImage,
+		activeHistoryEntryId,
+		saveCurrentAnnotationsToHistory,
+	]);
 
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (canvas) {
-      if (!mainImage) {
-        const isActiveEntryInLog =
-          activeHistoryEntryId && historyLog.some((entry) => entry.id === activeHistoryEntryId && entry.imageId)
-        if (!isActiveEntryInLog) {
-          canvas.width = 600
-          canvas.height = 400
-        }
-      }
-      drawCanvas()
-    }
-  }, [mainImage, drawCanvas, activeHistoryEntryId, historyLog])
+	useEffect(() => {
+		const canvas = canvasRef.current;
+		if (canvas) {
+			if (!mainImage) {
+				const isActiveEntryInLog =
+					activeHistoryEntryId &&
+					historyLog.some(
+						(entry) => entry.id === activeHistoryEntryId && entry.imageId,
+					);
+				if (!isActiveEntryInLog) {
+					canvas.width = 600;
+					canvas.height = 400;
+				}
+			}
+			drawCanvas();
+		}
+	}, [mainImage, drawCanvas, activeHistoryEntryId, historyLog]);
 
-  useEffect(() => {
-    if (textInputPosition && textInputFieldRef.current) {
-      setTimeout(() => textInputFieldRef.current?.focus(), 0)
-    }
-  }, [textInputPosition])
+	useEffect(() => {
+		if (textInputPosition && textInputFieldRef.current) {
+			setTimeout(() => textInputFieldRef.current?.focus(), 0);
+		}
+	}, [textInputPosition]);
 
-  useEffect(() => {
-    if (!textInputPosition) return
-    function handleClickOutside(event: MouseEvent) {
-      if (textCardRef.current && !textCardRef.current.contains(event.target as Node)) {
-        setTextInputPosition(null)
-        setCurrentText("")
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-    }
-  }, [textInputPosition])
+	useEffect(() => {
+		if (!textInputPosition) return;
+		function handleClickOutside(event: MouseEvent) {
+			if (
+				textCardRef.current &&
+				!textCardRef.current.contains(event.target as Node)
+			) {
+				setTextInputPosition(null);
+				setCurrentText("");
+			}
+		}
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => {
+			document.removeEventListener("mousedown", handleClickOutside);
+		};
+	}, [textInputPosition]);
 
-  const handleImageUpload = async (file: File) => {
-    setIsCanvasLoading(true)
-    try {
-      if (mainImage && activeHistoryEntryId) {
-        await addOrUpdateHistoryEntry(null, annotationHistory.state, activeHistoryEntryId)
-      }
-      const newEntryMetadata = await addOrUpdateHistoryEntry(file, [])
-      if (newEntryMetadata) {
-        const loadedEntry = await loadAndActivateEntryFromMetadata(newEntryMetadata)
-        if (loadedEntry) {
-          setMainImage(loadedEntry.image)
-          annotationHistory.reset(loadedEntry.annotations)
-          setSelectedAnnotationId(null)
-          const canvas = canvasRef.current
-          if (canvas) {
-            canvas.width = loadedEntry.image.width
-            canvas.height = loadedEntry.image.height
-          }
-        } else {
-          setMainImage(null)
-          annotationHistory.reset([])
-        }
-      }
-    } catch (error) {
-      console.error("Error during image upload process:", error)
-    } finally {
-      setIsCanvasLoading(false)
-    }
-  }
+	const handleImageUpload = async (file: File) => {
+		setIsCanvasLoading(true);
+		try {
+			if (mainImage && activeHistoryEntryId) {
+				await addOrUpdateHistoryEntry(
+					null,
+					annotationHistory.state,
+					activeHistoryEntryId,
+				);
+			}
+			const newEntryMetadata = await addOrUpdateHistoryEntry(file, []);
+			if (newEntryMetadata) {
+				const loadedEntry =
+					await loadAndActivateEntryFromMetadata(newEntryMetadata);
+				if (loadedEntry) {
+					setMainImage(loadedEntry.image);
+					annotationHistory.reset(loadedEntry.annotations);
+					setSelectedAnnotationId(null);
+					const canvas = canvasRef.current;
+					if (canvas) {
+						canvas.width = loadedEntry.image.width;
+						canvas.height = loadedEntry.image.height;
+					}
+				} else {
+					setMainImage(null);
+					annotationHistory.reset([]);
+				}
+			}
+		} catch (error) {
+			console.error("Error during image upload process:", error);
+		} finally {
+			setIsCanvasLoading(false);
+		}
+	};
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      handleImageUpload(e.target.files[0])
-    }
-  }
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleImageUpload(e.dataTransfer.files[0])
-    }
-  }
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-  }
-  const getMousePosition = (e: React.MouseEvent): Point => {
-    const canvas = canvasRef.current
-    if (!canvas) return { x: 0, y: 0 }
-    const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY }
-  }
-  const isPointInRect = (point: Point, rect: { x: number; y: number; width: number; height: number }): boolean => {
-    return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height
-  }
+	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		if (e.target.files && e.target.files[0]) {
+			handleImageUpload(e.target.files[0]);
+		}
+	};
+	const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+		e.preventDefault();
+		e.stopPropagation();
+		if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+			handleImageUpload(e.dataTransfer.files[0]);
+		}
+	};
+	const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+		e.preventDefault();
+		e.stopPropagation();
+	};
+	const getMousePosition = (e: React.MouseEvent): Point => {
+		const canvas = canvasRef.current;
+		if (!canvas) return { x: 0, y: 0 };
+		const rect = canvas.getBoundingClientRect();
+		const scaleX = canvas.width / rect.width;
+		const scaleY = canvas.height / rect.height;
+		return {
+			x: (e.clientX - rect.left) * scaleX,
+			y: (e.clientY - rect.top) * scaleY,
+		};
+	};
+	const isPointInRect = (
+		point: Point,
+		rect: { x: number; y: number; width: number; height: number },
+	): boolean => {
+		return (
+			point.x >= rect.x &&
+			point.x <= rect.x + rect.width &&
+			point.y >= rect.y &&
+			point.y <= rect.y + rect.height
+		);
+	};
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!mainImage || (textInputPosition && textCardRef.current?.contains(e.target as Node))) return
-    const pos = getMousePosition(e)
-    if (currentTool === "cursor") {
-      let foundAnnotation: Annotation | null = null
-      for (let i = annotationHistory.state.length - 1; i >= 0; i--) {
-        const anno = annotationHistory.state[i]
-        if (isPointInRect(pos, { x: anno.x, y: anno.y, width: anno.width, height: anno.height })) {
-          foundAnnotation = anno
-          break
-        }
-      }
-      if (foundAnnotation) {
-        setSelectedAnnotationId(foundAnnotation.id)
-        setIsDraggingAnnotation(true)
-        setDragOffset({ x: pos.x - foundAnnotation.x, y: pos.y - foundAnnotation.y })
-        setStartPoint(pos)
-      } else {
-        setSelectedAnnotationId(null)
-        setIsDraggingAnnotation(false)
-      }
-      setIsDrawing(false)
-      return
-    }
-    setSelectedAnnotationId(null)
-    if (currentTool === "text") {
-      setTextInputPosition(pos)
-      setCurrentText("")
-      setIsDrawing(false)
-    } else {
-      setIsDrawing(true)
-      setStartPoint(pos)
-      setCurrentEndPoint(pos)
-      if (currentTool === "highlight") setCurrentHighlightPoints([pos])
-    }
-  }
+	const handleMouseDown = (e: React.MouseEvent) => {
+		if (
+			!mainImage ||
+			(textInputPosition && textCardRef.current?.contains(e.target as Node))
+		)
+			return;
+		const pos = getMousePosition(e);
+		if (currentTool === "cursor") {
+			let foundAnnotation: Annotation | null = null;
+			for (let i = annotationHistory.state.length - 1; i >= 0; i--) {
+				const anno = annotationHistory.state[i];
+				if (
+					isPointInRect(pos, {
+						x: anno.x,
+						y: anno.y,
+						width: anno.width,
+						height: anno.height,
+					})
+				) {
+					foundAnnotation = anno;
+					break;
+				}
+			}
+			if (foundAnnotation) {
+				setSelectedAnnotationId(foundAnnotation.id);
+				setIsDraggingAnnotation(true);
+				setDragOffset({
+					x: pos.x - foundAnnotation.x,
+					y: pos.y - foundAnnotation.y,
+				});
+				setStartPoint(pos);
+			} else {
+				setSelectedAnnotationId(null);
+				setIsDraggingAnnotation(false);
+			}
+			setIsDrawing(false);
+			return;
+		}
+		setSelectedAnnotationId(null);
+		if (currentTool === "text") {
+			setTextInputPosition(pos);
+			setCurrentText("");
+			setIsDrawing(false);
+		} else {
+			setIsDrawing(true);
+			setStartPoint(pos);
+			setCurrentEndPoint(pos);
+			if (currentTool === "highlight") setCurrentHighlightPoints([pos]);
+		}
+	};
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!mainImage || (!isDrawing && !isDraggingAnnotation)) return
-    const pos = getMousePosition(e)
-    if (isDraggingAnnotation && selectedAnnotationId && dragOffset && startPoint) {
-      const newX = pos.x - dragOffset.x
-      const newY = pos.y - dragOffset.y
-      annotationHistory.set((prevAnnotations) =>
-        prevAnnotations.map((anno) => {
-          if (anno.id === selectedAnnotationId) {
-            const deltaX = newX - anno.x
-            const deltaY = newY - anno.y
-            let updatedAnno = { ...anno, x: newX, y: newY }
-            if (anno.type === "arrow" || anno.type === "line") {
-              updatedAnno = {
-                ...updatedAnno,
-                startX: anno.startX + deltaX,
-                startY: anno.startY + deltaY,
-                endX: anno.endX + deltaX,
-                endY: anno.endY + deltaY,
-              }
-            } else if (anno.type === "ellipse") {
-              updatedAnno = { ...updatedAnno, centerX: anno.centerX + deltaX, centerY: anno.centerY + deltaY }
-            } else if (anno.type === "highlight") {
-              updatedAnno = { ...updatedAnno, points: anno.points.map((p) => ({ x: p.x + deltaX, y: p.y + deltaY })) }
-            }
-            return updatedAnno
-          }
-          return anno
-        }),
-      )
-    } else if (isDrawing && startPoint && currentTool !== "cursor" && currentTool !== "text") {
-      setCurrentEndPoint(pos)
-      if (currentTool === "highlight") {
-        setCurrentHighlightPoints((prev) => [...prev, pos])
-      }
-    }
-  }
+	const handleMouseMove = (e: React.MouseEvent) => {
+		if (!mainImage || (!isDrawing && !isDraggingAnnotation)) return;
+		const pos = getMousePosition(e);
+		if (
+			isDraggingAnnotation &&
+			selectedAnnotationId &&
+			dragOffset &&
+			startPoint
+		) {
+			const newX = pos.x - dragOffset.x;
+			const newY = pos.y - dragOffset.y;
+			annotationHistory.set((prevAnnotations) =>
+				prevAnnotations.map((anno) => {
+					if (anno.id === selectedAnnotationId) {
+						const deltaX = newX - anno.x;
+						const deltaY = newY - anno.y;
+						let updatedAnno = { ...anno, x: newX, y: newY };
+						if (anno.type === "arrow" || anno.type === "line") {
+							updatedAnno = {
+								...updatedAnno,
+								startX: anno.startX + deltaX,
+								startY: anno.startY + deltaY,
+								endX: anno.endX + deltaX,
+								endY: anno.endY + deltaY,
+							};
+						} else if (anno.type === "ellipse") {
+							updatedAnno = {
+								...updatedAnno,
+								centerX: anno.centerX + deltaX,
+								centerY: anno.centerY + deltaY,
+							};
+						} else if (anno.type === "highlight") {
+							updatedAnno = {
+								...updatedAnno,
+								points: anno.points.map((p) => ({
+									x: p.x + deltaX,
+									y: p.y + deltaY,
+								})),
+							};
+						}
+						return updatedAnno;
+					}
+					return anno;
+				}),
+			);
+		} else if (
+			isDrawing &&
+			startPoint &&
+			currentTool !== "cursor" &&
+			currentTool !== "text"
+		) {
+			setCurrentEndPoint(pos);
+			if (currentTool === "highlight") {
+				setCurrentHighlightPoints((prev) => [...prev, pos]);
+			}
+		}
+	};
 
-  const handleMouseUp = () => {
-    if (isDraggingAnnotation) {
-      setIsDraggingAnnotation(false)
-      return
-    }
-    if (currentTool === "cursor" || currentTool === "text") {
-      setIsDrawing(false)
-      setStartPoint(null)
-      setCurrentEndPoint(null)
-      return
-    }
-    if (!isDrawing || !mainImage || !startPoint || !currentEndPoint) {
-      if (currentTool === "highlight" && currentHighlightPoints.length > 1) {
-        const newAnnotation: HighlightAnnotation = {
-          id: Date.now().toString(),
-          type: "highlight",
-          points: [...currentHighlightPoints],
-          color: highlightColor,
-          strokeWidth: highlightStrokeWidth,
-          x: Math.min(...currentHighlightPoints.map((p) => p.x)),
-          y: Math.min(...currentHighlightPoints.map((p) => p.y)),
-          width:
-            Math.max(...currentHighlightPoints.map((p) => p.x)) - Math.min(...currentHighlightPoints.map((p) => p.x)),
-          height:
-            Math.max(...currentHighlightPoints.map((p) => p.y)) - Math.min(...currentHighlightPoints.map((p) => p.y)),
-        }
-        annotationHistory.set((prev) => [...prev, newAnnotation])
-      }
-      setIsDrawing(false)
-      setStartPoint(null)
-      setCurrentEndPoint(null)
-      setCurrentHighlightPoints([])
-      return
-    }
+	const handleMouseUp = () => {
+		if (isDraggingAnnotation) {
+			setIsDraggingAnnotation(false);
+			return;
+		}
+		if (currentTool === "cursor" || currentTool === "text") {
+			setIsDrawing(false);
+			setStartPoint(null);
+			setCurrentEndPoint(null);
+			return;
+		}
+		if (!isDrawing || !mainImage || !startPoint || !currentEndPoint) {
+			if (currentTool === "highlight" && currentHighlightPoints.length > 1) {
+				const newAnnotation: HighlightAnnotation = {
+					id: Date.now().toString(),
+					type: "highlight",
+					points: [...currentHighlightPoints],
+					color: highlightColor,
+					strokeWidth: highlightStrokeWidth,
+					x: Math.min(...currentHighlightPoints.map((p) => p.x)),
+					y: Math.min(...currentHighlightPoints.map((p) => p.y)),
+					width:
+						Math.max(...currentHighlightPoints.map((p) => p.x)) -
+						Math.min(...currentHighlightPoints.map((p) => p.x)),
+					height:
+						Math.max(...currentHighlightPoints.map((p) => p.y)) -
+						Math.min(...currentHighlightPoints.map((p) => p.y)),
+				};
+				annotationHistory.set((prev) => [...prev, newAnnotation]);
+			}
+			setIsDrawing(false);
+			setStartPoint(null);
+			setCurrentEndPoint(null);
+			setCurrentHighlightPoints([]);
+			return;
+		}
 
-    const x = Math.min(startPoint.x, currentEndPoint.x)
-    const y = Math.min(startPoint.y, currentEndPoint.y)
-    const width = Math.abs(startPoint.x - currentEndPoint.x)
-    const height = Math.abs(startPoint.y - currentEndPoint.y)
+		const x = Math.min(startPoint.x, currentEndPoint.x);
+		const y = Math.min(startPoint.y, currentEndPoint.y);
+		const width = Math.abs(startPoint.x - currentEndPoint.x);
+		const height = Math.abs(startPoint.y - currentEndPoint.y);
 
-    if (width === 0 && height === 0 && currentTool !== "highlight") {
-      setIsDrawing(false)
-      setStartPoint(null)
-      setCurrentEndPoint(null)
-      return
-    }
+		if (width === 0 && height === 0 && currentTool !== "highlight") {
+			setIsDrawing(false);
+			setStartPoint(null);
+			setCurrentEndPoint(null);
+			return;
+		}
 
-    let newAnnotation: Annotation | null = null
-    switch (currentTool) {
-      case "rectangle":
-        newAnnotation = {
-          id: Date.now().toString(),
-          type: "rectangle",
-          x,
-          y,
-          width,
-          height,
-          strokeColor,
-          fillColor: useFill ? fillColor : undefined,
-          strokeWidth,
-        }
-        break
-      case "spotlight-area":
-        newAnnotation = { id: Date.now().toString(), type: "spotlight-area", x, y, width, height }
-        break
-      case "pixelate-area":
-        newAnnotation = { id: Date.now().toString(), type: "pixelate-area", x, y, width, height, pixelSize }
-        break
-      case "arrow":
-        newAnnotation = {
-          id: Date.now().toString(),
-          type: "arrow",
-          startX: startPoint.x,
-          startY: startPoint.y,
-          endX: currentEndPoint.x,
-          endY: currentEndPoint.y,
-          color: strokeColor,
-          strokeWidth,
-          x,
-          y,
-          width,
-          height,
-        }
-        break
-      case "ellipse":
-        const radiusX = width / 2
-        const radiusY = height / 2
-        newAnnotation = {
-          id: Date.now().toString(),
-          type: "ellipse",
-          centerX: x + radiusX,
-          centerY: y + radiusY,
-          radiusX,
-          radiusY,
-          strokeColor,
-          fillColor: useFill ? fillColor : undefined,
-          strokeWidth,
-          x,
-          y,
-          width,
-          height,
-        }
-        break
-      case "line":
-        newAnnotation = {
-          id: Date.now().toString(),
-          type: "line",
-          startX: startPoint.x,
-          startY: startPoint.y,
-          endX: currentEndPoint.x,
-          endY: currentEndPoint.y,
-          color: strokeColor,
-          strokeWidth,
-          x,
-          y,
-          width,
-          height,
-        }
-        break
-      case "highlight":
-        if (currentHighlightPoints.length > 1) {
-          newAnnotation = {
-            id: Date.now().toString(),
-            type: "highlight",
-            points: [...currentHighlightPoints],
-            color: highlightColor,
-            strokeWidth: highlightStrokeWidth,
-            x: Math.min(...currentHighlightPoints.map((p) => p.x)),
-            y: Math.min(...currentHighlightPoints.map((p) => p.y)),
-            width:
-              Math.max(...currentHighlightPoints.map((p) => p.x)) - Math.min(...currentHighlightPoints.map((p) => p.x)),
-            height:
-              Math.max(...currentHighlightPoints.map((p) => p.y)) - Math.min(...currentHighlightPoints.map((p) => p.y)),
-          }
-        }
-        break
-    }
-    if (newAnnotation) annotationHistory.set((prev) => [...prev, newAnnotation])
-    setIsDrawing(false)
-    setStartPoint(null)
-    setCurrentEndPoint(null)
-    setCurrentHighlightPoints([])
-  }
+		let newAnnotation: Annotation | null = null;
+		switch (currentTool) {
+			case "rectangle":
+				newAnnotation = {
+					id: Date.now().toString(),
+					type: "rectangle",
+					x,
+					y,
+					width,
+					height,
+					strokeColor,
+					fillColor: useFill ? fillColor : undefined,
+					strokeWidth,
+				};
+				break;
+			case "spotlight-area":
+				newAnnotation = {
+					id: Date.now().toString(),
+					type: "spotlight-area",
+					x,
+					y,
+					width,
+					height,
+				};
+				break;
+			case "pixelate-area":
+				newAnnotation = {
+					id: Date.now().toString(),
+					type: "pixelate-area",
+					x,
+					y,
+					width,
+					height,
+					pixelSize,
+				};
+				break;
+			case "arrow":
+				newAnnotation = {
+					id: Date.now().toString(),
+					type: "arrow",
+					startX: startPoint.x,
+					startY: startPoint.y,
+					endX: currentEndPoint.x,
+					endY: currentEndPoint.y,
+					color: strokeColor,
+					strokeWidth,
+					x,
+					y,
+					width,
+					height,
+				};
+				break;
+			case "ellipse":
+				const radiusX = width / 2;
+				const radiusY = height / 2;
+				newAnnotation = {
+					id: Date.now().toString(),
+					type: "ellipse",
+					centerX: x + radiusX,
+					centerY: y + radiusY,
+					radiusX,
+					radiusY,
+					strokeColor,
+					fillColor: useFill ? fillColor : undefined,
+					strokeWidth,
+					x,
+					y,
+					width,
+					height,
+				};
+				break;
+			case "line":
+				newAnnotation = {
+					id: Date.now().toString(),
+					type: "line",
+					startX: startPoint.x,
+					startY: startPoint.y,
+					endX: currentEndPoint.x,
+					endY: currentEndPoint.y,
+					color: strokeColor,
+					strokeWidth,
+					x,
+					y,
+					width,
+					height,
+				};
+				break;
+			case "highlight":
+				if (currentHighlightPoints.length > 1) {
+					newAnnotation = {
+						id: Date.now().toString(),
+						type: "highlight",
+						points: [...currentHighlightPoints],
+						color: highlightColor,
+						strokeWidth: highlightStrokeWidth,
+						x: Math.min(...currentHighlightPoints.map((p) => p.x)),
+						y: Math.min(...currentHighlightPoints.map((p) => p.y)),
+						width:
+							Math.max(...currentHighlightPoints.map((p) => p.x)) -
+							Math.min(...currentHighlightPoints.map((p) => p.x)),
+						height:
+							Math.max(...currentHighlightPoints.map((p) => p.y)) -
+							Math.min(...currentHighlightPoints.map((p) => p.y)),
+					};
+				}
+				break;
+		}
+		if (newAnnotation)
+			annotationHistory.set((prev) => [...prev, newAnnotation]);
+		setIsDrawing(false);
+		setStartPoint(null);
+		setCurrentEndPoint(null);
+		setCurrentHighlightPoints([]);
+	};
 
-  const handleTextSubmit = () => {
-    if (!textInputPosition || !currentText.trim()) {
-      setTextInputPosition(null)
-      setCurrentText("")
-      return
-    }
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    ctx.font = `${fontSize}px ${fontFamily}`
-    const textMetrics = ctx.measureText(currentText)
-    const newTextAnnotation: TextAnnotation = {
-      id: Date.now().toString(),
-      type: "text",
-      x: textInputPosition.x,
-      y: textInputPosition.y,
-      text: currentText,
-      color: strokeColor,
-      fontSize,
-      fontFamily,
-      width: textMetrics.width,
-      height: fontSize,
-    }
-    annotationHistory.set((prev) => [...prev, newTextAnnotation])
-    setTextInputPosition(null)
-    setCurrentText("")
-  }
+	const handleTextSubmit = () => {
+		if (!textInputPosition || !currentText.trim()) {
+			setTextInputPosition(null);
+			setCurrentText("");
+			return;
+		}
+		const canvas = canvasRef.current;
+		if (!canvas) return;
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return;
+		ctx.font = `${fontSize}px ${fontFamily}`;
+		const textMetrics = ctx.measureText(currentText);
+		const newTextAnnotation: TextAnnotation = {
+			id: Date.now().toString(),
+			type: "text",
+			x: textInputPosition.x,
+			y: textInputPosition.y,
+			text: currentText,
+			color: strokeColor,
+			fontSize,
+			fontFamily,
+			width: textMetrics.width,
+			height: fontSize,
+		};
+		annotationHistory.set((prev) => [...prev, newTextAnnotation]);
+		setTextInputPosition(null);
+		setCurrentText("");
+	};
 
-  const handleCopyToClipboard = async () => {
-    const canvas = canvasRef.current
-    if (!canvas || !mainImage) return
-    canvas.toBlob(async (blob) => {
-      if (blob) {
-        try {
-          await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
-          toast({ title: "Image Copied", description: "The annotated image has been copied to your clipboard." })
-        } catch (err: any) {
-          console.error("Failed to copy image: ", err)
-          toast({
-            variant: "destructive",
-            title: "Copy Failed",
-            description: "Could not copy the image to your clipboard.",
-          })
-        }
-      }
-    }, "image/png")
-  }
+	const handleCopyToClipboard = async () => {
+		const canvas = canvasRef.current;
+		if (!canvas || !mainImage) return;
+		canvas.toBlob(async (blob) => {
+			if (blob) {
+				try {
+					await navigator.clipboard.write([
+						new ClipboardItem({ [blob.type]: blob }),
+					]);
+					toast({
+						title: "Image Copied",
+						description:
+							"The annotated image has been copied to your clipboard.",
+					});
+				} catch (err: any) {
+					console.error("Failed to copy image: ", err);
+					toast({
+						variant: "destructive",
+						title: "Copy Failed",
+						description: "Could not copy the image to your clipboard.",
+					});
+				}
+			}
+		}, "image/png");
+	};
 
-  const handleSaveToDisk = () => {
-    const canvas = canvasRef.current
-    if (!canvas || !mainImage) return
-    const dataURL = canvas.toDataURL("image/png")
-    const link = document.createElement("a")
-    link.download = "annotated-image.png"
-    link.href = dataURL
-    link.click()
-  }
+	const handleSaveToDisk = () => {
+		const canvas = canvasRef.current;
+		if (!canvas || !mainImage) return;
+		const dataURL = canvas.toDataURL("image/png");
+		const link = document.createElement("a");
+		link.download = "annotated-image.png";
+		link.href = dataURL;
+		link.click();
+	};
 
-  const clearAllAnnotations = () => {
-    annotationHistory.reset([])
-    setSelectedAnnotationId(null)
-  }
+	const clearAllAnnotations = () => {
+		annotationHistory.reset([]);
+		setSelectedAnnotationId(null);
+	};
 
-  const handleDeleteSelectedAnnotation = () => {
-    if (selectedAnnotationId) {
-      annotationHistory.set((prev) => prev.filter((anno) => anno.id !== selectedAnnotationId))
-      setSelectedAnnotationId(null)
-    }
-  }
+	const handleDeleteSelectedAnnotation = () => {
+		if (selectedAnnotationId) {
+			annotationHistory.set((prev) =>
+				prev.filter((anno) => anno.id !== selectedAnnotationId),
+			);
+			setSelectedAnnotationId(null);
+		}
+	};
 
-  const toolList: { name: Tool; icon: React.ElementType; label: string }[] = [
-    { name: "cursor", icon: MousePointer2, label: "Cursor" },
-    { name: "rectangle", icon: Square, label: "Rectangle" },
-    { name: "spotlight-area", icon: Eye, label: "Spotlight Area" },
-    { name: "pixelate-area", icon: Grid, label: "Pixelate Area" },
-    { name: "text", icon: Type, label: "Text" },
-    { name: "arrow", icon: ArrowUpRight, label: "Arrow" },
-    { name: "ellipse", icon: Circle, label: "Ellipse" },
-    { name: "line", icon: Minus, label: "Line" },
-    { name: "highlight", icon: Highlighter, label: "Highlight" },
-  ]
+	const toolList: { name: Tool; icon: React.ElementType; label: string }[] = [
+		{ name: "cursor", icon: MousePointer2, label: "Cursor" },
+		{ name: "rectangle", icon: Square, label: "Rectangle" },
+		{ name: "spotlight-area", icon: Eye, label: "Spotlight Area" },
+		{ name: "pixelate-area", icon: Grid, label: "Pixelate Area" },
+		{ name: "text", icon: Type, label: "Text" },
+		{ name: "arrow", icon: ArrowUpRight, label: "Arrow" },
+		{ name: "ellipse", icon: Circle, label: "Ellipse" },
+		{ name: "line", icon: Minus, label: "Line" },
+		{ name: "highlight", icon: Highlighter, label: "Highlight" },
+	];
 
-  const renderToolSettings = () => {
-    const selectedAnno = getSelectedAnnotation()
-    let activeToolType: Tool | undefined = currentTool
-    if (currentTool === "cursor" && selectedAnno) activeToolType = selectedAnno.type
+	const renderToolSettings = () => {
+		const selectedAnno = getSelectedAnnotation();
+		let activeToolType: Tool | undefined = currentTool;
+		if (currentTool === "cursor" && selectedAnno)
+			activeToolType = selectedAnno.type;
 
-    const ColorPickerWithSwatches = ({
-      currentColor,
-      onColorSelect,
-      colorType,
-      tooltip,
-    }: {
-      currentColor: string
-      onColorSelect: (newColor: string) => void
-      colorType: "opaque" | "fill" | "highlight"
-      tooltip: string
-    }) => {
-      const handleSwatchClick = (hexColor: string) => {
-        if (colorType === "opaque") onColorSelect(hexColor)
-        else if (colorType === "fill") onColorSelect(hexToRgba(hexColor, DEFAULT_FILL_ALPHA))
-        else if (colorType === "highlight") onColorSelect(hexToRgba(hexColor, DEFAULT_HIGHLIGHT_ALPHA))
-      }
-      const spectrumInputValue = colorType === "opaque" ? currentColor : rgbaToHex(currentColor)
-      const handleSpectrumChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const hexColor = e.target.value
-        if (colorType === "opaque") onColorSelect(hexColor)
-        else if (colorType === "fill") onColorSelect(hexToRgba(hexColor, DEFAULT_FILL_ALPHA))
-        else if (colorType === "highlight") onColorSelect(hexToRgba(hexColor, DEFAULT_HIGHLIGHT_ALPHA))
-      }
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="flex items-center gap-1 p-1 rounded-md border border-input">
-              {PREDEFINED_OPAQUE_COLORS.map((hex) => (
-                <button
-                  key={hex}
-                  type="button"
-                  className={`w-5 h-5 rounded-sm border hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 ${(colorType === "opaque" && currentColor === hex) || (colorType !== "opaque" && rgbaToHex(currentColor) === hex) ? "ring-2 ring-offset-1 ring-primary" : "border-muted-foreground/50"}`}
-                  style={{
-                    backgroundColor:
-                      colorType === "opaque"
-                        ? hex
-                        : hexToRgba(hex, colorType === "fill" ? DEFAULT_FILL_ALPHA : DEFAULT_HIGHLIGHT_ALPHA),
-                  }}
-                  onClick={() => handleSwatchClick(hex)}
-                />
-              ))}
-              <Separator orientation="vertical" className="h-5 mx-1" />
-              <Input
-                type="color"
-                value={spectrumInputValue}
-                onChange={handleSpectrumChange}
-                className="h-6 w-6 p-0 border-none bg-transparent"
-              />
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>{tooltip}</TooltipContent>
-        </Tooltip>
-      )
-    }
+		const ColorPickerWithSwatches = ({
+			currentColor,
+			onColorSelect,
+			colorType,
+			tooltip,
+		}: {
+			currentColor: string;
+			onColorSelect: (newColor: string) => void;
+			colorType: "opaque" | "fill" | "highlight";
+			tooltip: string;
+		}) => {
+			const handleSwatchClick = (hexColor: string) => {
+				if (colorType === "opaque") onColorSelect(hexColor);
+				else if (colorType === "fill")
+					onColorSelect(hexToRgba(hexColor, DEFAULT_FILL_ALPHA));
+				else if (colorType === "highlight")
+					onColorSelect(hexToRgba(hexColor, DEFAULT_HIGHLIGHT_ALPHA));
+			};
+			const spectrumInputValue =
+				colorType === "opaque" ? currentColor : rgbaToHex(currentColor);
+			const handleSpectrumChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+				const hexColor = e.target.value;
+				if (colorType === "opaque") onColorSelect(hexColor);
+				else if (colorType === "fill")
+					onColorSelect(hexToRgba(hexColor, DEFAULT_FILL_ALPHA));
+				else if (colorType === "highlight")
+					onColorSelect(hexToRgba(hexColor, DEFAULT_HIGHLIGHT_ALPHA));
+			};
+			return (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<div className="flex items-center gap-1 p-1 rounded-md border border-input">
+							{PREDEFINED_OPAQUE_COLORS.map((hex) => (
+								<button
+									key={hex}
+									type="button"
+									className={`w-5 h-5 rounded-sm border hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 ${(colorType === "opaque" && currentColor === hex) || (colorType !== "opaque" && rgbaToHex(currentColor) === hex) ? "ring-2 ring-offset-1 ring-primary" : "border-muted-foreground/50"}`}
+									style={{
+										backgroundColor:
+											colorType === "opaque"
+												? hex
+												: hexToRgba(
+														hex,
+														colorType === "fill"
+															? DEFAULT_FILL_ALPHA
+															: DEFAULT_HIGHLIGHT_ALPHA,
+													),
+									}}
+									onClick={() => handleSwatchClick(hex)}
+								/>
+							))}
+							<Separator orientation="vertical" className="h-5 mx-1" />
+							<Input
+								type="color"
+								value={spectrumInputValue}
+								onChange={handleSpectrumChange}
+								className="h-6 w-6 p-0 border-none bg-transparent"
+							/>
+						</div>
+					</TooltipTrigger>
+					<TooltipContent>{tooltip}</TooltipContent>
+				</Tooltip>
+			);
+		};
 
-    switch (activeToolType) {
-      case "rectangle":
-      case "ellipse":
-        return (
-          <>
-            <ColorPickerWithSwatches
-              currentColor={strokeColor}
-              onColorSelect={(newColor) => {
-                setStrokeColor(newColor)
-                handleSettingChange("strokeColor", newColor)
-              }}
-              colorType="opaque"
-              tooltip="Stroke Color"
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Input
-                  id="strokeWidth"
-                  type="number"
-                  value={strokeWidth}
-                  onChange={(e) => {
-                    const val = Number.parseInt(e.target.value)
-                    setStrokeWidth(val)
-                    handleSettingChange("strokeWidth", val)
-                  }}
-                  min="1"
-                  className="h-8 w-16"
-                  aria-label="Stroke Width"
-                />
-              </TooltipTrigger>
-              <TooltipContent>Stroke Width</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center p-2 rounded-md hover:bg-accent">
-                  <Checkbox
-                    id="useFill"
-                    checked={useFill}
-                    onCheckedChange={(checked) => {
-                      const val = Boolean(checked)
-                      setUseFill(val)
-                      handleSettingChange("useFill", val)
-                    }}
-                    aria-label="Fill Shape"
-                  />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>Fill Shape</TooltipContent>
-            </Tooltip>
-            {useFill && (
-              <ColorPickerWithSwatches
-                currentColor={fillColor}
-                onColorSelect={(newColor) => {
-                  setFillColor(newColor)
-                  handleSettingChange("fillColor", newColor)
-                }}
-                colorType="fill"
-                tooltip="Fill Color"
-              />
-            )}
-          </>
-        )
-      case "arrow":
-      case "line":
-      case "text":
-        return (
-          <>
-            <ColorPickerWithSwatches
-              currentColor={strokeColor}
-              onColorSelect={(newColor) => {
-                setStrokeColor(newColor)
-                handleSettingChange("color", newColor)
-              }}
-              colorType="opaque"
-              tooltip="Color"
-            />
-            {activeToolType !== "text" && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Input
-                    id="strokeWidth"
-                    type="number"
-                    value={strokeWidth}
-                    onChange={(e) => {
-                      const val = Number.parseInt(e.target.value)
-                      setStrokeWidth(val)
-                      handleSettingChange("strokeWidth", val)
-                    }}
-                    min="1"
-                    className="h-8 w-16"
-                    aria-label="Line Width"
-                  />
-                </TooltipTrigger>
-                <TooltipContent>Line Width</TooltipContent>
-              </Tooltip>
-            )}
-            {activeToolType === "text" && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Input
-                      id="fontSize"
-                      type="number"
-                      value={fontSize}
-                      onChange={(e) => {
-                        const val = Number.parseInt(e.target.value)
-                        setFontSize(val)
-                        handleSettingChange("fontSize", val)
-                      }}
-                      min="8"
-                      className="h-8 w-16"
-                      aria-label="Font Size"
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent>Font Size</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Input
-                      id="fontFamily"
-                      type="text"
-                      value={fontFamily}
-                      onChange={(e) => {
-                        setFontFamily(e.target.value)
-                        handleSettingChange("fontFamily", e.target.value)
-                      }}
-                      className="h-8 w-24"
-                      placeholder="Arial"
-                      aria-label="Font Family"
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent>Font Family</TooltipContent>
-                </Tooltip>
-              </>
-            )}
-          </>
-        )
-      case "spotlight-area":
-        return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="w-32">
-                <Slider
-                  id="spotlightDarkness"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={[spotlightDarkness]}
-                  onValueChange={(val) => setSpotlightDarkness(val[0])}
-                  aria-label="Spotlight Darkness"
-                />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>Spotlight Darkness ({Math.round(spotlightDarkness * 100)}%)</TooltipContent>
-          </Tooltip>
-        )
-      case "pixelate-area":
-        return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="w-32">
-                <Slider
-                  id="pixelSize"
-                  min={2}
-                  max={50}
-                  step={1}
-                  value={[pixelSize]}
-                  onValueChange={(val) => {
-                    setPixelSize(val[0])
-                    handleSettingChange("pixelSize", val[0])
-                  }}
-                  aria-label="Pixel Size"
-                />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>Pixel Size ({pixelSize}px)</TooltipContent>
-          </Tooltip>
-        )
-      case "highlight":
-        return (
-          <>
-            <ColorPickerWithSwatches
-              currentColor={highlightColor}
-              onColorSelect={(newColor) => {
-                setHighlightColor(newColor)
-                handleSettingChange("color", newColor)
-              }}
-              colorType="highlight"
-              tooltip="Highlight Color"
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Input
-                  id="highlightStrokeWidth"
-                  type="number"
-                  value={highlightStrokeWidth}
-                  onChange={(e) => {
-                    const val = Number.parseInt(e.target.value)
-                    setHighlightStrokeWidth(val)
-                    handleSettingChange("strokeWidth", val)
-                  }}
-                  min="1"
-                  className="h-8 w-16"
-                  aria-label="Highlight Width"
-                />
-              </TooltipTrigger>
-              <TooltipContent>Highlight Width</TooltipContent>
-            </Tooltip>
-          </>
-        )
-      default:
-        return null
-    }
-  }
+		switch (activeToolType) {
+			case "rectangle":
+			case "ellipse":
+				return (
+					<>
+						<ColorPickerWithSwatches
+							currentColor={strokeColor}
+							onColorSelect={(newColor) => {
+								setStrokeColor(newColor);
+								handleSettingChange("strokeColor", newColor);
+							}}
+							colorType="opaque"
+							tooltip="Stroke Color"
+						/>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Input
+									id="strokeWidth"
+									type="number"
+									value={strokeWidth}
+									onChange={(e) => {
+										const val = Number.parseInt(e.target.value);
+										setStrokeWidth(val);
+										handleSettingChange("strokeWidth", val);
+									}}
+									min="1"
+									className="h-8 w-16"
+									aria-label="Stroke Width"
+								/>
+							</TooltipTrigger>
+							<TooltipContent>Stroke Width</TooltipContent>
+						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<div className="flex items-center p-2 rounded-md hover:bg-accent">
+									<Checkbox
+										id="useFill"
+										checked={useFill}
+										onCheckedChange={(checked) => {
+											const val = Boolean(checked);
+											setUseFill(val);
+											handleSettingChange("useFill", val);
+										}}
+										aria-label="Fill Shape"
+									/>
+								</div>
+							</TooltipTrigger>
+							<TooltipContent>Fill Shape</TooltipContent>
+						</Tooltip>
+						{useFill && (
+							<ColorPickerWithSwatches
+								currentColor={fillColor}
+								onColorSelect={(newColor) => {
+									setFillColor(newColor);
+									handleSettingChange("fillColor", newColor);
+								}}
+								colorType="fill"
+								tooltip="Fill Color"
+							/>
+						)}
+					</>
+				);
+			case "arrow":
+			case "line":
+			case "text":
+				return (
+					<>
+						<ColorPickerWithSwatches
+							currentColor={strokeColor}
+							onColorSelect={(newColor) => {
+								setStrokeColor(newColor);
+								handleSettingChange("color", newColor);
+							}}
+							colorType="opaque"
+							tooltip="Color"
+						/>
+						{activeToolType !== "text" && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Input
+										id="strokeWidth"
+										type="number"
+										value={strokeWidth}
+										onChange={(e) => {
+											const val = Number.parseInt(e.target.value);
+											setStrokeWidth(val);
+											handleSettingChange("strokeWidth", val);
+										}}
+										min="1"
+										className="h-8 w-16"
+										aria-label="Line Width"
+									/>
+								</TooltipTrigger>
+								<TooltipContent>Line Width</TooltipContent>
+							</Tooltip>
+						)}
+						{activeToolType === "text" && (
+							<>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Input
+											id="fontSize"
+											type="number"
+											value={fontSize}
+											onChange={(e) => {
+												const val = Number.parseInt(e.target.value);
+												setFontSize(val);
+												handleSettingChange("fontSize", val);
+											}}
+											min="8"
+											className="h-8 w-16"
+											aria-label="Font Size"
+										/>
+									</TooltipTrigger>
+									<TooltipContent>Font Size</TooltipContent>
+								</Tooltip>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Input
+											id="fontFamily"
+											type="text"
+											value={fontFamily}
+											onChange={(e) => {
+												setFontFamily(e.target.value);
+												handleSettingChange("fontFamily", e.target.value);
+											}}
+											className="h-8 w-24"
+											placeholder="Arial"
+											aria-label="Font Family"
+										/>
+									</TooltipTrigger>
+									<TooltipContent>Font Family</TooltipContent>
+								</Tooltip>
+							</>
+						)}
+					</>
+				);
+			case "spotlight-area":
+				return (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<div className="w-32">
+								<Slider
+									id="spotlightDarkness"
+									min={0}
+									max={1}
+									step={0.01}
+									value={[spotlightDarkness]}
+									onValueChange={(val) => setSpotlightDarkness(val[0])}
+									aria-label="Spotlight Darkness"
+								/>
+							</div>
+						</TooltipTrigger>
+						<TooltipContent>
+							Spotlight Darkness ({Math.round(spotlightDarkness * 100)}%)
+						</TooltipContent>
+					</Tooltip>
+				);
+			case "pixelate-area":
+				return (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<div className="w-32">
+								<Slider
+									id="pixelSize"
+									min={2}
+									max={50}
+									step={1}
+									value={[pixelSize]}
+									onValueChange={(val) => {
+										setPixelSize(val[0]);
+										handleSettingChange("pixelSize", val[0]);
+									}}
+									aria-label="Pixel Size"
+								/>
+							</div>
+						</TooltipTrigger>
+						<TooltipContent>Pixel Size ({pixelSize}px)</TooltipContent>
+					</Tooltip>
+				);
+			case "highlight":
+				return (
+					<>
+						<ColorPickerWithSwatches
+							currentColor={highlightColor}
+							onColorSelect={(newColor) => {
+								setHighlightColor(newColor);
+								handleSettingChange("color", newColor);
+							}}
+							colorType="highlight"
+							tooltip="Highlight Color"
+						/>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Input
+									id="highlightStrokeWidth"
+									type="number"
+									value={highlightStrokeWidth}
+									onChange={(e) => {
+										const val = Number.parseInt(e.target.value);
+										setHighlightStrokeWidth(val);
+										handleSettingChange("strokeWidth", val);
+									}}
+									min="1"
+									className="h-8 w-16"
+									aria-label="Highlight Width"
+								/>
+							</TooltipTrigger>
+							<TooltipContent>Highlight Width</TooltipContent>
+						</Tooltip>
+					</>
+				);
+			default:
+				return null;
+		}
+	};
 
-  const handleSelectHistoryEntry = async (entryId: string) => {
-    if (isCanvasLoading || entryId === activeHistoryEntryId) return
-    setIsCanvasLoading(true)
-    try {
-      if (mainImage && activeHistoryEntryId && annotationHistory.state && activeHistoryEntryId !== entryId) {
-        await addOrUpdateHistoryEntry(null, annotationHistory.state, activeHistoryEntryId)
-      }
-      const loadedEntry = await loadHistoryEntry(entryId)
-      if (loadedEntry) {
-        setMainImage(loadedEntry.image)
-        annotationHistory.reset(loadedEntry.annotations)
-        setSelectedAnnotationId(null)
-        const canvas = canvasRef.current
-        if (canvas) {
-          canvas.width = loadedEntry.image.width
-          canvas.height = loadedEntry.image.height
-        }
-      }
-    } catch (error) {
-      console.error("Error selecting history entry:", error)
-    } finally {
-      setIsCanvasLoading(false)
-    }
-  }
+	const handleSelectHistoryEntry = async (entryId: string) => {
+		if (isCanvasLoading || entryId === activeHistoryEntryId) return;
+		setIsCanvasLoading(true);
+		try {
+			if (
+				mainImage &&
+				activeHistoryEntryId &&
+				annotationHistory.state &&
+				activeHistoryEntryId !== entryId
+			) {
+				await addOrUpdateHistoryEntry(
+					null,
+					annotationHistory.state,
+					activeHistoryEntryId,
+				);
+			}
+			const loadedEntry = await loadHistoryEntry(entryId);
+			if (loadedEntry) {
+				setMainImage(loadedEntry.image);
+				annotationHistory.reset(loadedEntry.annotations);
+				setSelectedAnnotationId(null);
+				const canvas = canvasRef.current;
+				if (canvas) {
+					canvas.width = loadedEntry.image.width;
+					canvas.height = loadedEntry.image.height;
+				}
+			}
+		} catch (error) {
+			console.error("Error selecting history entry:", error);
+		} finally {
+			setIsCanvasLoading(false);
+		}
+	};
 
-  const handleDeleteFromTray = async (entryId: string) => {
-    setIsCanvasLoading(true)
-    try {
-      await deleteHistoryEntry(entryId)
-      if (entryId === activeHistoryEntryId) {
-        setMainImage(null)
-        annotationHistory.reset([])
-        const newLog = historyLog.filter((e) => e.id !== entryId)
-        if (newLog.length > 0) {
-          await handleSelectHistoryEntry(newLog[0].id)
-        }
-      } else if (historyLog.filter((e) => e.id !== entryId).length === 0) {
-        setMainImage(null)
-        annotationHistory.reset([])
-      }
-    } catch (error) {
-      console.error("Error deleting from tray:", error)
-    } finally {
-      setIsCanvasLoading(false)
-    }
-  }
+	const handleDeleteFromTray = async (entryId: string) => {
+		setIsCanvasLoading(true);
+		try {
+			await deleteHistoryEntry(entryId);
+			if (entryId === activeHistoryEntryId) {
+				setMainImage(null);
+				annotationHistory.reset([]);
+				const newLog = historyLog.filter((e) => e.id !== entryId);
+				if (newLog.length > 0) {
+					await handleSelectHistoryEntry(newLog[0].id);
+				}
+			} else if (historyLog.filter((e) => e.id !== entryId).length === 0) {
+				setMainImage(null);
+				annotationHistory.reset([]);
+			}
+		} catch (error) {
+			console.error("Error deleting from tray:", error);
+		} finally {
+			setIsCanvasLoading(false);
+		}
+	};
 
-  return (
-    <TooltipProvider>
-      <div className="w-full h-full flex flex-col bg-background relative">
-        <div className="flex flex-nowrap items-center overflow-x-auto gap-1 p-2">
-          {toolList.map((tool) => (
-            <Tooltip key={tool.name}>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={currentTool === tool.name ? "secondary" : "ghost"}
-                  size="icon"
-                  onClick={() => {
-                    setCurrentTool(tool.name)
-                    if (tool.name !== "cursor") setSelectedAnnotationId(null)
-                    if (textInputPosition && tool.name !== "text") {
-                      setTextInputPosition(null)
-                      setCurrentText("")
-                    }
-                  }}
-                  disabled={isCanvasLoading || isLoadingHistory}
-                >
-                  <tool.icon className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{tool.label}</TooltipContent>
-            </Tooltip>
-          ))}
-          <Separator orientation="vertical" className="h-8 mx-2" />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={annotationHistory.undo}
-                title="Undo Annotation"
-                disabled={!annotationHistory.canUndo || isCanvasLoading || isLoadingHistory}
-              >
-                <Undo2 className="h-5 w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Undo</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={annotationHistory.redo}
-                title="Redo Annotation"
-                disabled={!annotationHistory.canRedo || isCanvasLoading || isLoadingHistory}
-              >
-                <Redo2 className="h-5 w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Redo</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={clearAllAnnotations}
-                title="Clear Annotations"
-                disabled={isCanvasLoading || isLoadingHistory}
-              >
-                <Eraser className="h-5 w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Clear All Annotations</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleDeleteSelectedAnnotation}
-                disabled={!selectedAnnotationId || currentTool !== "cursor" || isCanvasLoading || isLoadingHistory}
-                title="Delete Selected"
-              >
-                <Trash2 className="h-5 w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Delete Selected Annotation</TooltipContent>
-          </Tooltip>
-          <Separator orientation="vertical" className="h-8 mx-2" />
-          <div className="flex items-center gap-2 flex-wrap mr-auto">{renderToolSettings()}</div>
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCopyToClipboard}
-                  disabled={!mainImage || isCanvasLoading || isLoadingHistory}
-                  className="h-9 w-9"
-                >
-                  <Copy className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Copy to Clipboard</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleSaveToDisk}
-                  disabled={!mainImage || isCanvasLoading || isLoadingHistory}
-                  className="h-9 w-9"
-                >
-                  <Save className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Save to Disk</TooltipContent>
-            </Tooltip>
-            <ThemeToggleButton />
-          </div>
-        </div>
+	return (
+		<TooltipProvider>
+			<div className="w-full h-full flex flex-col bg-background relative">
+				<div className="flex flex-nowrap items-center overflow-x-auto gap-1 p-2">
+					{toolList.map((tool) => (
+						<Tooltip key={tool.name}>
+							<TooltipTrigger asChild>
+								<Button
+									variant={currentTool === tool.name ? "secondary" : "ghost"}
+									size="icon"
+									onClick={() => {
+										setCurrentTool(tool.name);
+										if (tool.name !== "cursor") setSelectedAnnotationId(null);
+										if (textInputPosition && tool.name !== "text") {
+											setTextInputPosition(null);
+											setCurrentText("");
+										}
+									}}
+									disabled={isCanvasLoading || isLoadingHistory}
+								>
+									<tool.icon className="h-5 w-5" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>{tool.label}</TooltipContent>
+						</Tooltip>
+					))}
+					<Separator orientation="vertical" className="h-8 mx-2" />
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={annotationHistory.undo}
+								title="Undo Annotation"
+								disabled={
+									!annotationHistory.canUndo ||
+									isCanvasLoading ||
+									isLoadingHistory
+								}
+							>
+								<Undo2 className="h-5 w-5" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>Undo</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={annotationHistory.redo}
+								title="Redo Annotation"
+								disabled={
+									!annotationHistory.canRedo ||
+									isCanvasLoading ||
+									isLoadingHistory
+								}
+							>
+								<Redo2 className="h-5 w-5" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>Redo</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={clearAllAnnotations}
+								title="Clear Annotations"
+								disabled={isCanvasLoading || isLoadingHistory}
+							>
+								<Eraser className="h-5 w-5" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>Clear All Annotations</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={handleDeleteSelectedAnnotation}
+								disabled={
+									!selectedAnnotationId ||
+									currentTool !== "cursor" ||
+									isCanvasLoading ||
+									isLoadingHistory
+								}
+								title="Delete Selected"
+							>
+								<Trash2 className="h-5 w-5" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>Delete Selected Annotation</TooltipContent>
+					</Tooltip>
+					<Separator orientation="vertical" className="h-8 mx-2" />
+					<div className="flex items-center gap-2 flex-wrap mr-auto">
+						{renderToolSettings()}
+					</div>
+					<div className="flex items-center gap-1">
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={handleCopyToClipboard}
+									disabled={!mainImage || isCanvasLoading || isLoadingHistory}
+									className="h-9 w-9"
+								>
+									<Copy className="h-5 w-5" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Copy to Clipboard</TooltipContent>
+						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={handleSaveToDisk}
+									disabled={!mainImage || isCanvasLoading || isLoadingHistory}
+									className="h-9 w-9"
+								>
+									<Save className="h-5 w-5" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Save to Disk</TooltipContent>
+						</Tooltip>
+						<ThemeToggleButton />
+					</div>
+				</div>
 
-        <div
-          ref={canvasContainerRef}
-          className={`relative flex-grow bg-muted flex items-center justify-center overflow-hidden ${currentTool === "cursor" ? "cursor-default" : currentTool === "text" ? "text-cursor" : "cursor-crosshair"}`}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onClick={(e) => {
-            if (!mainImage && fileInputRef.current && !(isCanvasLoading || isLoadingHistory))
-              fileInputRef.current.click()
-            if (currentTool === "cursor" && e.target === e.currentTarget) {
-              const pos = getMousePosition(e as unknown as React.MouseEvent)
-              let onAnnotation = false
-              if (canvasRef.current) {
-                const canvasRect = canvasRef.current.getBoundingClientRect()
-                const clickX = e.clientX - canvasRect.left
-                const clickY = e.clientY - canvasRect.top
-                if (clickX >= 0 && clickX <= canvasRect.width && clickY >= 0 && clickY <= canvasRect.height) {
-                  for (const anno of annotationHistory.state) {
-                    if (isPointInRect(pos, { x: anno.x, y: anno.y, width: anno.width, height: anno.height })) {
-                      onAnnotation = true
-                      break
-                    }
-                  }
-                }
-              }
-              if (!onAnnotation) setSelectedAnnotationId(null)
-            }
-          }}
-        >
-          <canvas
-            ref={canvasRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            className="max-w-full max-h-full object-contain"
-            style={{ visibility: "visible" }}
-          />
-          {textInputPosition && (
-            <div
-              ref={textCardRef}
-              style={(() => {
-                if (canvasRef.current && canvasContainerRef.current && textInputPosition) {
-                  const canvasEl = canvasRef.current
-                  const containerEl = canvasContainerRef.current
-                  const canvasRect = canvasEl.getBoundingClientRect()
-                  const containerRect = containerEl.getBoundingClientRect()
-                  const canvasDisplayXInContainer = canvasRect.left - containerRect.left
-                  const canvasDisplayYInContainer = canvasRect.top - containerRect.top
-                  const currentDisplayScaleX = canvasRect.width / canvasEl.width
-                  const currentDisplayScaleY = canvasRect.height / canvasEl.height
-                  const clickXOnDisplayedCanvas = textInputPosition.x * currentDisplayScaleX
-                  const clickYOnDisplayedCanvas = textInputPosition.y * currentDisplayScaleY
-                  const cardLeft = canvasDisplayXInContainer + clickXOnDisplayedCanvas
-                  const cardTop = canvasDisplayYInContainer + clickYOnDisplayedCanvas
-                  return { position: "absolute", left: `${cardLeft}px`, top: `${cardTop}px`, zIndex: 10 }
-                }
-                return { display: "none" }
-              })()}
-            >
-              <Card className="w-64 shadow-xl">
-                <CardContent className="p-2">
-                  <Input
-                    ref={textInputFieldRef}
-                    type="text"
-                    value={currentText}
-                    onChange={(e) => setCurrentText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleTextSubmit()
-                      if (e.key === "Escape") {
-                        setTextInputPosition(null)
-                        setCurrentText("")
-                      }
-                    }}
-                    className="w-full h-10 text-sm"
-                    placeholder="Type text & press Enter..."
-                  />
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </div>
-        <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-        <ImageHistoryTray
-          historyLog={historyLog}
-          thumbnailCache={thumbnailCache}
-          onSelectEntry={handleSelectHistoryEntry}
-          onDeleteEntry={handleDeleteFromTray}
-          activeEntryId={activeHistoryEntryId}
-          isLoading={isLoadingHistory || isCanvasLoading}
-        />
-      </div>
-    </TooltipProvider>
-  )
+				<div
+					ref={canvasContainerRef}
+					className={`relative flex-grow bg-muted flex items-center justify-center overflow-hidden ${currentTool === "cursor" ? "cursor-default" : currentTool === "text" ? "text-cursor" : "cursor-crosshair"}`}
+					onDrop={handleDrop}
+					onDragOver={handleDragOver}
+					onClick={(e) => {
+						if (
+							!mainImage &&
+							fileInputRef.current &&
+							!(isCanvasLoading || isLoadingHistory)
+						)
+							fileInputRef.current.click();
+						if (currentTool === "cursor" && e.target === e.currentTarget) {
+							const pos = getMousePosition(e as unknown as React.MouseEvent);
+							let onAnnotation = false;
+							if (canvasRef.current) {
+								const canvasRect = canvasRef.current.getBoundingClientRect();
+								const clickX = e.clientX - canvasRect.left;
+								const clickY = e.clientY - canvasRect.top;
+								if (
+									clickX >= 0 &&
+									clickX <= canvasRect.width &&
+									clickY >= 0 &&
+									clickY <= canvasRect.height
+								) {
+									for (const anno of annotationHistory.state) {
+										if (
+											isPointInRect(pos, {
+												x: anno.x,
+												y: anno.y,
+												width: anno.width,
+												height: anno.height,
+											})
+										) {
+											onAnnotation = true;
+											break;
+										}
+									}
+								}
+							}
+							if (!onAnnotation) setSelectedAnnotationId(null);
+						}
+					}}
+				>
+					<canvas
+						ref={canvasRef}
+						onMouseDown={handleMouseDown}
+						onMouseMove={handleMouseMove}
+						onMouseUp={handleMouseUp}
+						onMouseLeave={handleMouseUp}
+						className="max-w-full max-h-full object-contain"
+						style={{ visibility: "visible" }}
+					/>
+					{textInputPosition && (
+						<div
+							ref={textCardRef}
+							style={(() => {
+								if (
+									canvasRef.current &&
+									canvasContainerRef.current &&
+									textInputPosition
+								) {
+									const canvasEl = canvasRef.current;
+									const containerEl = canvasContainerRef.current;
+									const canvasRect = canvasEl.getBoundingClientRect();
+									const containerRect = containerEl.getBoundingClientRect();
+									const canvasDisplayXInContainer =
+										canvasRect.left - containerRect.left;
+									const canvasDisplayYInContainer =
+										canvasRect.top - containerRect.top;
+									const currentDisplayScaleX =
+										canvasRect.width / canvasEl.width;
+									const currentDisplayScaleY =
+										canvasRect.height / canvasEl.height;
+									const clickXOnDisplayedCanvas =
+										textInputPosition.x * currentDisplayScaleX;
+									const clickYOnDisplayedCanvas =
+										textInputPosition.y * currentDisplayScaleY;
+									const cardLeft =
+										canvasDisplayXInContainer + clickXOnDisplayedCanvas;
+									const cardTop =
+										canvasDisplayYInContainer + clickYOnDisplayedCanvas;
+									return {
+										position: "absolute",
+										left: `${cardLeft}px`,
+										top: `${cardTop}px`,
+										zIndex: 10,
+									};
+								}
+								return { display: "none" };
+							})()}
+						>
+							<Card className="w-64 shadow-xl">
+								<CardContent className="p-2">
+									<Input
+										ref={textInputFieldRef}
+										type="text"
+										value={currentText}
+										onChange={(e) => setCurrentText(e.target.value)}
+										onKeyDown={(e) => {
+											if (e.key === "Enter") handleTextSubmit();
+											if (e.key === "Escape") {
+												setTextInputPosition(null);
+												setCurrentText("");
+											}
+										}}
+										className="w-full h-10 text-sm"
+										placeholder="Type text & press Enter..."
+									/>
+								</CardContent>
+							</Card>
+						</div>
+					)}
+				</div>
+				<input
+					type="file"
+					accept="image/*"
+					ref={fileInputRef}
+					onChange={handleFileChange}
+					className="hidden"
+				/>
+				<ImageHistoryTray
+					historyLog={historyLog}
+					thumbnailCache={thumbnailCache}
+					onSelectEntry={handleSelectHistoryEntry}
+					onDeleteEntry={handleDeleteFromTray}
+					activeEntryId={activeHistoryEntryId}
+					isLoading={isLoadingHistory || isCanvasLoading}
+				/>
+			</div>
+		</TooltipProvider>
+	);
 }
