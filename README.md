@@ -4,12 +4,22 @@
   <img src="https://github.com/pablopunk/x/blob/main/public/logo.png?raw=true" alt="logo" width="150px" />
 </p>
 
-> X. Free image annotation tool.
+<p align="center">
+  <i><b>X</b>. Free image annotation tool.</i>
+</p>
 
-![screenshot](https://github.com/pablopunk/x/blob/main/public/screenshot.jpg?raw=true)
+<p align="center">
+  <img src="https://github.com/pablopunk/x/blob/main/public/screenshot.jpg?raw=true" alt="screenshot" width="80%" />
+</p>
 
 ## Features
 
+- Private & Free:
+  - No account required
+  - No data leaves your browser
+  - No tracking
+  - No ads
+  - No cookies
 - Draw shapes (rectangles, ellipses, lines, arrows)
 - Add text annotations
 - Highlight and pixelate areas
