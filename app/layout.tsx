@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster"; // Ensure this path is correct for your project
+import Script from "next/script";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -35,6 +36,14 @@ export default function RootLayout({
 					href="/favicon/apple-touch-icon.png"
 				/>
 				<link rel="manifest" href="/favicon/site.webmanifest" />
+				{process.env.NODE_ENV === "production" && (
+					<Script
+						data-goatcounter="/goat"
+						async
+						src="/count.js"
+						strategy="afterInteractive"
+					/>
+				)}
 			</head>
 			<body className={inter.className}>
 				<ThemeProvider
