@@ -105,12 +105,6 @@ export default function AnnotationCanvas() {
 
 	const getSelectedAnnotation = useCallback(() => {
 		if (!selectedAnnotationId) return null;
-		const selectedAnno = getSelectedAnnotation();
-		const activeToolType: Tool =
-			currentTool === "cursor" && selectedAnno
-				? selectedAnno.type
-				: currentTool;
-
 		return (
 			annotationHistory.state.find((a) => a.id === selectedAnnotationId) || null
 		);
@@ -1130,6 +1124,10 @@ export default function AnnotationCanvas() {
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [annotationHistory, selectedAnnotationId, currentTool]);
+
+	const selectedAnno = getSelectedAnnotation();
+	const activeToolType: Tool =
+		currentTool === "cursor" && selectedAnno ? selectedAnno.type : currentTool;
 
 	return (
 		<TooltipProvider>
