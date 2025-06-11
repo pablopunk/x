@@ -1025,16 +1025,40 @@ export default function AnnotationCanvas() {
 		}
 	};
 
-	const toolList: { name: Tool; icon: React.ElementType; label: string }[] = [
-		{ name: "cursor", icon: MousePointer2, label: "Cursor" },
-		{ name: "rectangle", icon: Square, label: "Rectangle" },
-		{ name: "spotlight-area", icon: Eye, label: "Spotlight Area" },
-		{ name: "pixelate-area", icon: Grid, label: "Pixelate Area" },
-		{ name: "text", icon: Type, label: "Text" },
-		{ name: "arrow", icon: ArrowUpRight, label: "Arrow" },
-		{ name: "ellipse", icon: Circle, label: "Ellipse" },
-		{ name: "line", icon: Minus, label: "Line" },
-		{ name: "highlight", icon: Highlighter, label: "Highlight" },
+	const switchTool = (tool: Tool) => {
+		setCurrentTool(tool);
+		if (tool !== "cursor") setSelectedAnnotationId(null);
+		if (textInputPosition && tool !== "text") {
+			setTextInputPosition(null);
+			setCurrentText("");
+		}
+	};
+
+	const toolList: {
+		name: Tool;
+		icon: React.ElementType;
+		label: string;
+		shortcut: string;
+	}[] = [
+		{ name: "cursor", icon: MousePointer2, label: "Cursor", shortcut: "V" },
+		{ name: "rectangle", icon: Square, label: "Rectangle", shortcut: "R" },
+		{
+			name: "spotlight-area",
+			icon: Eye,
+			label: "Spotlight Area",
+			shortcut: "S",
+		},
+		{
+			name: "pixelate-area",
+			icon: Grid,
+			label: "Pixelate Area",
+			shortcut: "P",
+		},
+		{ name: "text", icon: Type, label: "Text", shortcut: "T" },
+		{ name: "arrow", icon: ArrowUpRight, label: "Arrow", shortcut: "A" },
+		{ name: "ellipse", icon: Circle, label: "Ellipse", shortcut: "E" },
+		{ name: "line", icon: Minus, label: "Line", shortcut: "L" },
+		{ name: "highlight", icon: Highlighter, label: "Highlight", shortcut: "B" },
 	];
 
 	const handleSelectHistoryEntry = async (entryId: string) => {
@@ -1101,10 +1125,31 @@ export default function AnnotationCanvas() {
 
 			switch (e.key.toLowerCase()) {
 				case "v":
-					setCurrentTool("cursor");
+					switchTool("cursor");
 					break;
 				case "b":
-					setCurrentTool("highlight");
+					switchTool("highlight");
+					break;
+				case "r":
+					switchTool("rectangle");
+					break;
+				case "s":
+					switchTool("spotlight-area");
+					break;
+				case "p":
+					switchTool("pixelate-area");
+					break;
+				case "t":
+					switchTool("text");
+					break;
+				case "a":
+					switchTool("arrow");
+					break;
+				case "e":
+					switchTool("ellipse");
+					break;
+				case "l":
+					switchTool("line");
 					break;
 				case "z":
 					if (e.metaKey || e.ctrlKey) {
@@ -1146,20 +1191,15 @@ export default function AnnotationCanvas() {
 								<Button
 									variant={currentTool === tool.name ? "secondary" : "ghost"}
 									size="icon"
-									onClick={() => {
-										setCurrentTool(tool.name);
-										if (tool.name !== "cursor") setSelectedAnnotationId(null);
-										if (textInputPosition && tool.name !== "text") {
-											setTextInputPosition(null);
-											setCurrentText("");
-										}
-									}}
+									onClick={() => switchTool(tool.name)}
 									disabled={isCanvasLoading || isLoadingHistory}
 								>
 									<tool.icon className="h-5 w-5" />
 								</Button>
 							</TooltipTrigger>
-							<TooltipContent>{tool.label}</TooltipContent>
+							<TooltipContent>
+								{tool.label} ({tool.shortcut})
+							</TooltipContent>
 						</Tooltip>
 					))}
 					<Separator orientation="vertical" className="h-8 mx-2" />
