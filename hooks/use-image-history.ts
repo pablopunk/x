@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { storeBlob, getBlob, deleteBlob } from "@/lib/idb-helper";
 import { createThumbnail } from "@/lib/image-utils";
-import type { Annotation } from "@/components/annotation-canvas";
+import type { Annotation } from "@/lib/annotations";
 
 const MAX_HISTORY_ITEMS = 100;
 const LOCAL_STORAGE_KEY = "imageAnnotationHistoryLog";

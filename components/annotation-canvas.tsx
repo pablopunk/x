@@ -21,9 +21,7 @@ import {
 	Github,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Tooltip,
 	TooltipContent,
@@ -39,137 +37,27 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
 import Image from "next/image";
-
-export type Tool =
-	| "cursor"
-	| "rectangle"
-	| "spotlight-area"
-	| "pixelate-area"
-	| "text"
-	| "arrow"
-	| "ellipse"
-	| "line"
-	| "highlight";
-
-export interface Point {
-	x: number;
-	y: number;
-}
-export interface BaseAnnotation {
-	id: string;
-	type: Tool;
-	x: number;
-	y: number;
-	width: number;
-	height: number;
-}
-interface RectangleAnnotation extends BaseAnnotation {
-	type: "rectangle";
-	strokeColor: string;
-	fillColor?: string;
-	strokeWidth: number;
-}
-interface SpotlightAreaAnnotation extends BaseAnnotation {
-	type: "spotlight-area";
-}
-interface PixelateAreaAnnotation extends BaseAnnotation {
-	type: "pixelate-area";
-	pixelSize: number;
-}
-interface TextAnnotation extends BaseAnnotation {
-	type: "text";
-	text: string;
-	color: string;
-	fontSize: number;
-	fontFamily: string;
-}
-interface ArrowAnnotation extends BaseAnnotation {
-	type: "arrow";
-	startX: number;
-	startY: number;
-	endX: number;
-	endY: number;
-	color: string;
-	strokeWidth: number;
-}
-interface EllipseAnnotation extends BaseAnnotation {
-	type: "ellipse";
-	centerX: number;
-	centerY: number;
-	radiusX: number;
-	radiusY: number;
-	strokeColor: string;
-	fillColor?: string;
-	strokeWidth: number;
-}
-interface LineAnnotation extends BaseAnnotation {
-	type: "line";
-	startX: number;
-	startY: number;
-	endX: number;
-	endY: number;
-	color: string;
-	strokeWidth: number;
-}
-interface HighlightAnnotation extends BaseAnnotation {
-	type: "highlight";
-	color: string; // rgba
-	strokeWidth: number;
-	points: Point[];
-}
-
-export type Annotation =
-	| RectangleAnnotation
-	| SpotlightAreaAnnotation
-	| PixelateAreaAnnotation
-	| TextAnnotation
-	| ArrowAnnotation
-	| EllipseAnnotation
-	| LineAnnotation
-	| HighlightAnnotation;
-
-const DEFAULT_STROKE_COLOR = "#FCA5A5"; // Pastel Red
-const DEFAULT_FILL_ALPHA = 0.3;
-const DEFAULT_FILL_COLOR = `rgba(252, 165, 165, ${DEFAULT_FILL_ALPHA})`;
-
-const DEFAULT_TEXT_COLOR = "#1F2937"; // Dark Gray
-
-const DEFAULT_HIGHLIGHT_ALPHA = 0.5;
-const DEFAULT_HIGHLIGHT_COLOR = `rgba(253, 224, 71, ${DEFAULT_HIGHLIGHT_ALPHA})`;
-
-const DEFAULT_PIXEL_SIZE = 10;
-
-const PREDEFINED_OPAQUE_COLORS = [
-	"#FCA5A5",
-	"#FDBA74",
-	"#FDE047",
-	"#86EFAC",
-	"#93C5FD",
-	"#A5B4FC",
-	"#1F2937",
-];
-
-const hexToRgba = (hex: string, alpha = 1): string => {
-	const r = Number.parseInt(hex.slice(1, 3), 16);
-	const g = Number.parseInt(hex.slice(3, 5), 16);
-	const b = Number.parseInt(hex.slice(5, 7), 16);
-	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
-
-const rgbaToHex = (rgba: string): string => {
-	const match = rgba.match(/rgba?$$(\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?$$/);
-	if (!match) return "#000000";
-	const r = Number.parseInt(match[1]).toString(16).padStart(2, "0");
-	const g = Number.parseInt(match[2]).toString(16).padStart(2, "0");
-	const b = Number.parseInt(match[3]).toString(16).padStart(2, "0");
-	return `#${r}${g}${b}`;
-};
+import ToolSettings from "@/components/tool-settings";
+import { useCanvasActions } from "@/hooks/use-canvas-actions";
+import {
+	Tool,
+	Point,
+	Annotation,
+	DEFAULT_STROKE_COLOR,
+	DEFAULT_FILL_COLOR,
+	DEFAULT_HIGHLIGHT_COLOR,
+	DEFAULT_PIXEL_SIZE,
+} from "@/lib/annotations";
 
 export default function AnnotationCanvas() {
 	const { theme, resolvedTheme } = useTheme();
 	const { toast } = useToast();
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const [mainImage, setMainImage] = useState<HTMLImageElement | null>(null);
+	const { copyToClipboard, saveToDisk } = useCanvasActions(
+		canvasRef,
+		mainImage,
+	);
 	const {
 		historyLog,
 		isLoadingHistory,
@@ -188,8 +76,12 @@ export default function AnnotationCanvas() {
 	const [startPoint, setStartPoint] = useState<Point | null>(null);
 	const [currentEndPoint, setCurrentEndPoint] = useState<Point | null>(null);
 	const [currentText, setCurrentText] = useState("");
-	const [textInputPosition, setTextInputPosition] = useState<Point | null>(null);
-	const [currentHighlightPoints, setCurrentHighlightPoints] = useState<Point[]>([]);
+	const [textInputPosition, setTextInputPosition] = useState<Point | null>(
+		null,
+	);
+	const [currentHighlightPoints, setCurrentHighlightPoints] = useState<Point[]>(
+		[],
+	);
 	const [strokeColor, setStrokeColor] = useState(DEFAULT_STROKE_COLOR);
 	const [fillColor, setFillColor] = useState(DEFAULT_FILL_COLOR);
 	const [useFill, setUseFill] = useState(false);
@@ -1119,42 +1011,6 @@ export default function AnnotationCanvas() {
 		setCurrentText("");
 	};
 
-	const handleCopyToClipboard = async () => {
-		const canvas = canvasRef.current;
-		if (!canvas || !mainImage) return;
-		canvas.toBlob(async (blob) => {
-			if (blob) {
-				try {
-					await navigator.clipboard.write([
-						new ClipboardItem({ [blob.type]: blob }),
-					]);
-					toast({
-						title: "Image Copied",
-						description:
-							"The annotated image has been copied to your clipboard.",
-					});
-				} catch (err: any) {
-					console.error("Failed to copy image: ", err);
-					toast({
-						variant: "destructive",
-						title: "Copy Failed",
-						description: "Could not copy the image to your clipboard.",
-					});
-				}
-			}
-		}, "image/png");
-	};
-
-	const handleSaveToDisk = () => {
-		const canvas = canvasRef.current;
-		if (!canvas || !mainImage) return;
-		const dataURL = canvas.toDataURL("image/png");
-		const link = document.createElement("a");
-		link.download = "annotated-image.png";
-		link.href = dataURL;
-		link.click();
-	};
-
 	const clearAllAnnotations = () => {
 		annotationHistory.reset([]);
 		setSelectedAnnotationId(null);
@@ -1180,294 +1036,6 @@ export default function AnnotationCanvas() {
 		{ name: "line", icon: Minus, label: "Line" },
 		{ name: "highlight", icon: Highlighter, label: "Highlight" },
 	];
-
-	const renderToolSettings = () => {
-		const selectedAnno = getSelectedAnnotation();
-		let activeToolType: Tool | undefined = currentTool;
-		if (currentTool === "cursor" && selectedAnno)
-			activeToolType = selectedAnno.type;
-
-		const ColorPickerWithSwatches = ({
-			currentColor,
-			onColorSelect,
-			colorType,
-			tooltip,
-		}: {
-			currentColor: string;
-			onColorSelect: (newColor: string) => void;
-			colorType: "opaque" | "fill" | "highlight";
-			tooltip: string;
-		}) => {
-			const handleSwatchClick = (hexColor: string) => {
-				if (colorType === "opaque") onColorSelect(hexColor);
-				else if (colorType === "fill")
-					onColorSelect(hexToRgba(hexColor, DEFAULT_FILL_ALPHA));
-				else if (colorType === "highlight")
-					onColorSelect(hexToRgba(hexColor, DEFAULT_HIGHLIGHT_ALPHA));
-			};
-			const spectrumInputValue =
-				colorType === "opaque" ? currentColor : rgbaToHex(currentColor);
-			const handleSpectrumChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-				const hexColor = e.target.value;
-				if (colorType === "opaque") onColorSelect(hexColor);
-				else if (colorType === "fill")
-					onColorSelect(hexToRgba(hexColor, DEFAULT_FILL_ALPHA));
-				else if (colorType === "highlight")
-					onColorSelect(hexToRgba(hexColor, DEFAULT_HIGHLIGHT_ALPHA));
-			};
-			return (
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<div className="flex items-center gap-1 p-1 rounded-md border border-input">
-							{PREDEFINED_OPAQUE_COLORS.map((hex) => (
-								<button
-									key={hex}
-									type="button"
-									className={`w-5 h-5 rounded-sm border hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 ${(colorType === "opaque" && currentColor === hex) || (colorType !== "opaque" && rgbaToHex(currentColor) === hex) ? "ring-2 ring-offset-1 ring-primary" : "border-muted-foreground/50"}`}
-									style={{
-										backgroundColor:
-											colorType === "opaque"
-												? hex
-												: hexToRgba(
-														hex,
-														colorType === "fill"
-															? DEFAULT_FILL_ALPHA
-															: DEFAULT_HIGHLIGHT_ALPHA,
-													),
-									}}
-									onClick={() => handleSwatchClick(hex)}
-								/>
-							))}
-							<Separator orientation="vertical" className="h-5 mx-1" />
-							<Input
-								type="color"
-								value={spectrumInputValue}
-								onChange={handleSpectrumChange}
-								className="h-6 w-6 p-0 border-none bg-transparent"
-							/>
-						</div>
-					</TooltipTrigger>
-					<TooltipContent>{tooltip}</TooltipContent>
-				</Tooltip>
-			);
-		};
-
-		switch (activeToolType) {
-			case "rectangle":
-			case "ellipse":
-				return (
-					<>
-						<ColorPickerWithSwatches
-							currentColor={strokeColor}
-							onColorSelect={(newColor) => {
-								setStrokeColor(newColor);
-								handleSettingChange("strokeColor", newColor);
-							}}
-							colorType="opaque"
-							tooltip="Stroke Color"
-						/>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Input
-									id="strokeWidth"
-									type="number"
-									value={strokeWidth}
-									onChange={(e) => {
-										const val = Number.parseInt(e.target.value);
-										setStrokeWidth(val);
-										handleSettingChange("strokeWidth", val);
-									}}
-									min="1"
-									className="h-8 w-16"
-									aria-label="Stroke Width"
-								/>
-							</TooltipTrigger>
-							<TooltipContent>Stroke Width</TooltipContent>
-						</Tooltip>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<div className="flex items-center p-2 rounded-md hover:bg-accent">
-									<Checkbox
-										id="useFill"
-										checked={useFill}
-										onCheckedChange={(checked) => {
-											const val = Boolean(checked);
-											setUseFill(val);
-											handleSettingChange("useFill", val);
-										}}
-										aria-label="Fill Shape"
-									/>
-								</div>
-							</TooltipTrigger>
-							<TooltipContent>Fill Shape</TooltipContent>
-						</Tooltip>
-						{useFill && (
-							<ColorPickerWithSwatches
-								currentColor={fillColor}
-								onColorSelect={(newColor) => {
-									setFillColor(newColor);
-									handleSettingChange("fillColor", newColor);
-								}}
-								colorType="fill"
-								tooltip="Fill Color"
-							/>
-						)}
-					</>
-				);
-			case "arrow":
-			case "line":
-			case "text":
-				return (
-					<>
-						<ColorPickerWithSwatches
-							currentColor={strokeColor}
-							onColorSelect={(newColor) => {
-								setStrokeColor(newColor);
-								handleSettingChange("color", newColor);
-							}}
-							colorType="opaque"
-							tooltip="Color"
-						/>
-						{activeToolType !== "text" && (
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Input
-										id="strokeWidth"
-										type="number"
-										value={strokeWidth}
-										onChange={(e) => {
-											const val = Number.parseInt(e.target.value);
-											setStrokeWidth(val);
-											handleSettingChange("strokeWidth", val);
-										}}
-										min="1"
-										className="h-8 w-16"
-										aria-label="Line Width"
-									/>
-								</TooltipTrigger>
-								<TooltipContent>Line Width</TooltipContent>
-							</Tooltip>
-						)}
-						{activeToolType === "text" && (
-							<>
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<Input
-											id="fontSize"
-											type="number"
-											value={fontSize}
-											onChange={(e) => {
-												const val = Number.parseInt(e.target.value);
-												setFontSize(val);
-												handleSettingChange("fontSize", val);
-											}}
-											min="8"
-											className="h-8 w-16"
-											aria-label="Font Size"
-										/>
-									</TooltipTrigger>
-									<TooltipContent>Font Size</TooltipContent>
-								</Tooltip>
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<Input
-											id="fontFamily"
-											type="text"
-											value={fontFamily}
-											onChange={(e) => {
-												setFontFamily(e.target.value);
-												handleSettingChange("fontFamily", e.target.value);
-											}}
-											className="h-8 w-24"
-											placeholder="Arial"
-											aria-label="Font Family"
-										/>
-									</TooltipTrigger>
-									<TooltipContent>Font Family</TooltipContent>
-								</Tooltip>
-							</>
-						)}
-					</>
-				);
-			case "spotlight-area":
-				return (
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<div className="w-32">
-								<Slider
-									id="spotlightDarkness"
-									min={0}
-									max={1}
-									step={0.01}
-									value={[spotlightDarkness]}
-									onValueChange={(val) => setSpotlightDarkness(val[0])}
-									aria-label="Spotlight Darkness"
-								/>
-							</div>
-						</TooltipTrigger>
-						<TooltipContent>
-							Spotlight Darkness ({Math.round(spotlightDarkness * 100)}%)
-						</TooltipContent>
-					</Tooltip>
-				);
-			case "pixelate-area":
-				return (
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<div className="w-32">
-								<Slider
-									id="pixelSize"
-									min={2}
-									max={50}
-									step={1}
-									value={[pixelSize]}
-									onValueChange={(val) => {
-										setPixelSize(val[0]);
-										handleSettingChange("pixelSize", val[0]);
-									}}
-									aria-label="Pixel Size"
-								/>
-							</div>
-						</TooltipTrigger>
-						<TooltipContent>Pixel Size ({pixelSize}px)</TooltipContent>
-					</Tooltip>
-				);
-			case "highlight":
-				return (
-					<>
-						<ColorPickerWithSwatches
-							currentColor={highlightColor}
-							onColorSelect={(newColor) => {
-								setHighlightColor(newColor);
-								handleSettingChange("color", newColor);
-							}}
-							colorType="highlight"
-							tooltip="Highlight Color"
-						/>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Input
-									id="highlightStrokeWidth"
-									type="number"
-									value={highlightStrokeWidth}
-									onChange={(e) => {
-										const val = Number.parseInt(e.target.value);
-										setHighlightStrokeWidth(val);
-										handleSettingChange("strokeWidth", val);
-									}}
-									min="1"
-									className="h-8 w-16"
-									aria-label="Highlight Width"
-								/>
-							</TooltipTrigger>
-							<TooltipContent>Highlight Width</TooltipContent>
-						</Tooltip>
-					</>
-				);
-			default:
-				return null;
-		}
-	};
 
 	const handleSelectHistoryEntry = async (entryId: string) => {
 		if (isCanvasLoading || entryId === activeHistoryEntryId) return;
@@ -1532,30 +1100,34 @@ export default function AnnotationCanvas() {
 			if (e.target instanceof HTMLInputElement) return;
 
 			switch (e.key.toLowerCase()) {
-				case 'v':
-					setCurrentTool('cursor');
+				case "v":
+					setCurrentTool("cursor");
 					break;
-				case 'b':
-					setCurrentTool('highlight');
+				case "b":
+					setCurrentTool("highlight");
 					break;
-				case 'z':
+				case "z":
 					if (e.metaKey || e.ctrlKey) {
 						e.preventDefault();
 						annotationHistory.undo();
 					}
 					break;
-				case 'backspace':
-				case 'delete':
-					if (selectedAnnotationId && currentTool === 'cursor') {
+				case "backspace":
+				case "delete":
+					if (selectedAnnotationId && currentTool === "cursor") {
 						handleDeleteSelectedAnnotation();
 					}
 					break;
 			}
 		};
 
-		window.addEventListener('keydown', handleKeyDown);
-		return () => window.removeEventListener('keydown', handleKeyDown);
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [annotationHistory, selectedAnnotationId, currentTool]);
+
+	const selectedAnno = getSelectedAnnotation();
+	const activeToolType: Tool =
+		currentTool === "cursor" && selectedAnno ? selectedAnno.type : currentTool;
 
 	return (
 		<TooltipProvider>
@@ -1662,7 +1234,30 @@ export default function AnnotationCanvas() {
 					</Tooltip>
 					<Separator orientation="vertical" className="h-8 mx-2" />
 					<div className="flex items-center gap-2 flex-wrap mr-auto">
-						{renderToolSettings()}
+						<ToolSettings
+							activeToolType={activeToolType}
+							strokeColor={strokeColor}
+							setStrokeColor={setStrokeColor}
+							strokeWidth={strokeWidth}
+							setStrokeWidth={setStrokeWidth}
+							useFill={useFill}
+							setUseFill={setUseFill}
+							fillColor={fillColor}
+							setFillColor={setFillColor}
+							fontSize={fontSize}
+							setFontSize={setFontSize}
+							fontFamily={fontFamily}
+							setFontFamily={setFontFamily}
+							spotlightDarkness={spotlightDarkness}
+							setSpotlightDarkness={setSpotlightDarkness}
+							pixelSize={pixelSize}
+							setPixelSize={setPixelSize}
+							highlightColor={highlightColor}
+							setHighlightColor={setHighlightColor}
+							highlightStrokeWidth={highlightStrokeWidth}
+							setHighlightStrokeWidth={setHighlightStrokeWidth}
+							handleSettingChange={handleSettingChange}
+						/>
 					</div>
 					<div className="flex items-center gap-1">
 						<Tooltip>
@@ -1670,7 +1265,9 @@ export default function AnnotationCanvas() {
 								<Button
 									variant="ghost"
 									size="icon"
-									onClick={() => window.open('https://github.com/pablopunk/x', '_blank')}
+									onClick={() =>
+										window.open("https://github.com/pablopunk/x", "_blank")
+									}
 									className="h-9 w-9"
 								>
 									<Github className="h-5 w-5" />
@@ -1685,7 +1282,7 @@ export default function AnnotationCanvas() {
 								<Button
 									variant="ghost"
 									size="icon"
-									onClick={handleCopyToClipboard}
+									onClick={copyToClipboard}
 									disabled={!mainImage || isCanvasLoading || isLoadingHistory}
 									className="h-9 w-9 text-teal-500 dark:text-teal-400"
 								>
@@ -1699,7 +1296,7 @@ export default function AnnotationCanvas() {
 								<Button
 									variant="ghost"
 									size="icon"
-									onClick={handleSaveToDisk}
+									onClick={saveToDisk}
 									disabled={!mainImage || isCanvasLoading || isLoadingHistory}
 									className="h-9 w-9 text-emerald-500 dark:text-emerald-400"
 								>
