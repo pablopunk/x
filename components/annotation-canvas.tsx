@@ -18,6 +18,7 @@ import {
 	MousePointer2,
 	Trash2,
 	Grid,
+	Crop,
 	Github,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -973,6 +974,9 @@ export default function AnnotationCanvas() {
 					};
 				}
 				break;
+			case "crop":
+				handleCrop(x, y, width, height);
+				break;
 		}
 		if (newAnnotation)
 			annotationHistory.set((prev) => [...prev, newAnnotation]);
@@ -1025,6 +1029,100 @@ export default function AnnotationCanvas() {
 		}
 	};
 
+	const handleCrop = async (
+		cropX: number,
+		cropY: number,
+		cropW: number,
+		cropH: number,
+	) => {
+		if (!mainImage || !canvasRef.current) return;
+		setIsCanvasLoading(true);
+		try {
+			const tempCanvas = document.createElement("canvas");
+			tempCanvas.width = cropW;
+			tempCanvas.height = cropH;
+			const ctx = tempCanvas.getContext("2d");
+			if (!ctx) return;
+			ctx.drawImage(mainImage, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+			const blob: Blob | null = await new Promise((resolve) =>
+				tempCanvas.toBlob((b) => resolve(b), "image/png"),
+			);
+			if (!blob) return;
+			const file = new File([blob], "crop.png", { type: "image/png" });
+
+			const adjustAnnotations = annotationHistory.state
+				.map((anno) => {
+					if (
+						anno.x >= cropX &&
+						anno.y >= cropY &&
+						anno.x + anno.width <= cropX + cropW &&
+						anno.y + anno.height <= cropY + cropH
+					) {
+						const offsetX = cropX;
+						const offsetY = cropY;
+						const base = {
+							...anno,
+							x: anno.x - offsetX,
+							y: anno.y - offsetY,
+						} as Annotation;
+						switch (anno.type) {
+							case "arrow":
+							case "line":
+								return {
+									...base,
+									startX: anno.startX - offsetX,
+									startY: anno.startY - offsetY,
+									endX: anno.endX - offsetX,
+									endY: anno.endY - offsetY,
+								} as Annotation;
+							case "ellipse":
+								return {
+									...base,
+									centerX: anno.centerX - offsetX,
+									centerY: anno.centerY - offsetY,
+								} as Annotation;
+							case "highlight":
+								return {
+									...base,
+									points: anno.points.map((p) => ({
+										x: p.x - offsetX,
+										y: p.y - offsetY,
+									})),
+								} as Annotation;
+							default:
+								return base;
+						}
+					}
+					return null;
+				})
+				.filter(Boolean) as Annotation[];
+
+			const newEntryMetadata = await addOrUpdateHistoryEntry(
+				file,
+				adjustAnnotations,
+				activeHistoryEntryId,
+			);
+			if (newEntryMetadata) {
+				const loadedEntry =
+					await loadAndActivateEntryFromMetadata(newEntryMetadata);
+				if (loadedEntry) {
+					setMainImage(loadedEntry.image);
+					annotationHistory.reset(loadedEntry.annotations);
+					setSelectedAnnotationId(null);
+					const canvas = canvasRef.current;
+					if (canvas) {
+						canvas.width = loadedEntry.image.width;
+						canvas.height = loadedEntry.image.height;
+					}
+				}
+			}
+		} catch (error) {
+			console.error("Error cropping image:", error);
+		} finally {
+			setIsCanvasLoading(false);
+		}
+	};
+
 	const switchTool = (tool: Tool) => {
 		setCurrentTool(tool);
 		if (tool !== "cursor") setSelectedAnnotationId(null);
@@ -1054,6 +1152,7 @@ export default function AnnotationCanvas() {
 			label: "Pixelate Area",
 			shortcut: "P",
 		},
+		{ name: "crop", icon: Crop, label: "Crop", shortcut: "C" },
 		{ name: "text", icon: Type, label: "Text", shortcut: "T" },
 		{ name: "arrow", icon: ArrowUpRight, label: "Arrow", shortcut: "A" },
 		{ name: "ellipse", icon: Circle, label: "Ellipse", shortcut: "E" },
@@ -1138,6 +1237,9 @@ export default function AnnotationCanvas() {
 					break;
 				case "p":
 					switchTool("pixelate-area");
+					break;
+				case "c":
+					switchTool("crop");
 					break;
 				case "t":
 					switchTool("text");

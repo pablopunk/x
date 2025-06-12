@@ -23,6 +23,7 @@
 - Draw shapes (rectangles, ellipses, lines, arrows)
 - Add text annotations
 - Highlight and pixelate areas
+- Crop images
 - Save or copy to clipboard
 - Undo/redo history
 - Dark/light theme
