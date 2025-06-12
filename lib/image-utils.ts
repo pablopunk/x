@@ -35,6 +35,7 @@ export const createThumbnail = (
 				return reject(new Error("Failed to get canvas context for thumbnail"));
 			}
 
+			ctx.filter = "blur(1px)";
 			ctx.drawImage(img, 0, 0, width, height);
 			canvas.toBlob(
 				(blob) => {
