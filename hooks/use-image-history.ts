@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { storeBlob, getBlob, deleteBlob } from "@/lib/idb-helper";
-import { createThumbnail } from "@/lib/image-utils";
 import type { Annotation } from "@/lib/annotations";
+import { deleteBlob, getBlob, storeBlob } from "@/lib/idb-helper";
+import { createThumbnail } from "@/lib/image-utils";
+import { useCallback, useEffect, useState } from "react";
 
 const MAX_HISTORY_ITEMS = 100;
 const LOCAL_STORAGE_KEY = "imageAnnotationHistoryLog";
-const THUMBNAIL_WIDTH = 100;
-const THUMBNAIL_HEIGHT = 75;
+const THUMBNAIL_WIDTH = 250;
+const THUMBNAIL_HEIGHT = 187;
 
 export interface ImageHistoryEntryMetadata {
 	id: string;
