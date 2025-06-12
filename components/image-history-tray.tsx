@@ -127,7 +127,7 @@ export default function ImageHistoryTray({
 											"/placeholder.svg"
 										}
 										alt={latestEntryForStack.originalImageName || "Latest edit"}
-										className="h-full w-full object-cover rounded-md"
+										className="h-full w-full object-cover rounded-md blur-[2px]"
 									/>
 								) : (
 									<div className="h-full w-full flex items-center justify-center bg-muted rounded-md">
@@ -287,7 +287,7 @@ export default function ImageHistoryTray({
 															alt={
 																entry.originalImageName || `Edit ${entry.id}`
 															}
-															className="w-full h-full object-cover rounded-[0.2rem]"
+															className="w-full h-full object-cover rounded-[0.2rem] blur-[2px]"
 														/>
 													) : (
 														<div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground rounded-[0.2rem]">
