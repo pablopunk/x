@@ -10,7 +10,8 @@ export type Tool =
 	| "arrow"
 	| "ellipse"
 	| "line"
-	| "highlight";
+	| "highlight"
+	| "crop";
 
 export interface Point {
 	x: number;
