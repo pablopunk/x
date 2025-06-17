@@ -457,6 +457,12 @@ export default function AnnotationCanvas() {
 				ctx.setLineDash([5, 5]);
 				ctx.strokeRect(x, y, width, height);
 				ctx.setLineDash([]);
+			} else if (currentTool === "crop") {
+				ctx.strokeStyle = "rgba(0,0,255,0.5)";
+				ctx.lineWidth = 1;
+				ctx.setLineDash([5, 5]);
+				ctx.strokeRect(x, y, width, height);
+				ctx.setLineDash([]);
 			} else if (currentTool === "arrow" || currentTool === "line") {
 				ctx.strokeStyle = strokeColor;
 				ctx.lineWidth = strokeWidth;
@@ -1097,10 +1103,17 @@ export default function AnnotationCanvas() {
 				})
 				.filter(Boolean) as Annotation[];
 
+			if (activeHistoryEntryId) {
+				await addOrUpdateHistoryEntry(
+					null,
+					annotationHistory.state,
+					activeHistoryEntryId,
+				);
+			}
+
 			const newEntryMetadata = await addOrUpdateHistoryEntry(
 				file,
 				adjustAnnotations,
-				activeHistoryEntryId,
 			);
 			if (newEntryMetadata) {
 				const loadedEntry =
