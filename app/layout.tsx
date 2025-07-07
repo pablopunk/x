@@ -77,6 +77,25 @@ export default function RootLayout({
 						strategy="afterInteractive"
 					/>
 				)}
+				<Script
+					id="service-worker"
+					strategy="afterInteractive"
+					dangerouslySetInnerHTML={{
+						__html: `
+							if ('serviceWorker' in navigator) {
+								window.addEventListener('load', function() {
+									navigator.serviceWorker.register('/sw.js')
+										.then(function(registration) {
+											console.log('SW registered: ', registration);
+										})
+										.catch(function(registrationError) {
+											console.log('SW registration failed: ', registrationError);
+										});
+								});
+							}
+						`
+					}}
+				/>
 			</head>
 			<body className={inter.className}>
 				<ThemeProvider

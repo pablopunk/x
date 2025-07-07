@@ -14,17 +14,24 @@
 
 ## Features
 
-- Private & Free:
+- **Private & Free:**
   - No account required
   - No data leaves your browser
   - No tracking
   - No ads
   - No cookies
-- Draw shapes (rectangles, ellipses, lines, arrows)
-- Add text annotations
-- Highlight and pixelate areas
-- Crop images
-- Save or copy to clipboard
-- Undo/redo history
-- Dark/light theme
+- **Works Offline:**
+  - Works without internet connection after first visit
+  - All data stored locally
+  - No installation required
+- **Annotation Tools:**
+  - Draw shapes (rectangles, ellipses, lines, arrows)
+  - Add text annotations
+  - Highlight and pixelate areas
+  - Crop images
+  - Save or copy to clipboard
+  - Undo/redo history
+- **Theme Support:**
+  - Dark/light theme
+  - System theme detection
 - Image history with tabs

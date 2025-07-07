@@ -1,6 +1,9 @@
 {
   "name": "X annotate",
   "short_name": "X",
+  "description": "Free image annotation tool that works offline",
+  "start_url": "/",
+  "scope": "/",
   "icons": [
     {
       "src": "/favicon/web-app-manifest-192x192.png",
@@ -17,5 +20,6 @@
   ],
   "theme_color": "#ffffff",
   "background_color": "#ffffff",
-  "display": "standalone"
+  "display": "browser",
+  "lang": "en"
 }
