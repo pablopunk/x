@@ -1022,7 +1022,7 @@ export default function AnnotationCanvas() {
 	};
 
 	const clearAllAnnotations = () => {
-		annotationHistory.reset([]);
+		annotationHistory.set([]);
 		setSelectedAnnotationId(null);
 	};
 
