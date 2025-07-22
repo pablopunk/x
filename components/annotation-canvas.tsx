@@ -2,6 +2,7 @@
 
 import type React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
+import rough from "roughjs";
 import {
 	Eraser,
 	Square,
@@ -351,33 +352,49 @@ export default function AnnotationCanvas() {
 				ctx.fillText(textAnno.text, textAnno.x, textAnno.y);
 			} else if (anno.type === "arrow") {
 				const arrow = anno as ArrowAnnotation;
-				ctx.strokeStyle = arrow.color;
-				ctx.lineWidth = arrow.strokeWidth;
-				ctx.fillStyle = arrow.color;
+				
+				// Create Rough.js instance for hand-drawn style
+				const rc = rough.canvas(canvas);
+				
+				// Calculate arrow geometry
 				const angle = Math.atan2(
 					arrow.endY - arrow.startY,
 					arrow.endX - arrow.startX,
 				);
-				const headlen = 10 + arrow.strokeWidth * 2;
+				const headlen = 12 + arrow.strokeWidth * 2;
 				const pullBackDistance = headlen * Math.cos(Math.PI / 6);
 				const shaftEndX = arrow.endX - pullBackDistance * Math.cos(angle);
 				const shaftEndY = arrow.endY - pullBackDistance * Math.sin(angle);
-				ctx.beginPath();
-				ctx.moveTo(arrow.startX, arrow.startY);
-				ctx.lineTo(shaftEndX, shaftEndY);
-				ctx.stroke();
-				ctx.beginPath();
-				ctx.moveTo(arrow.endX, arrow.endY);
-				ctx.lineTo(
-					arrow.endX - headlen * Math.cos(angle - Math.PI / 6),
-					arrow.endY - headlen * Math.sin(angle - Math.PI / 6),
-				);
-				ctx.lineTo(
-					arrow.endX - headlen * Math.cos(angle + Math.PI / 6),
-					arrow.endY - headlen * Math.sin(angle + Math.PI / 6),
-				);
-				ctx.closePath();
-				ctx.fill();
+				
+				// Draw the arrow shaft with hand-drawn style
+				rc.line(arrow.startX, arrow.startY, shaftEndX, shaftEndY, {
+					stroke: arrow.color,
+					strokeWidth: arrow.strokeWidth,
+					roughness: 1.2,
+					bowing: 2
+				});
+				
+				// Draw the arrowhead with hand-drawn style
+				const arrowheadPoints = [
+					[arrow.endX, arrow.endY],
+					[
+						arrow.endX - headlen * Math.cos(angle - Math.PI / 6),
+						arrow.endY - headlen * Math.sin(angle - Math.PI / 6),
+					],
+					[
+						arrow.endX - headlen * Math.cos(angle + Math.PI / 6),
+						arrow.endY - headlen * Math.sin(angle + Math.PI / 6),
+					]
+				];
+				
+				rc.polygon(arrowheadPoints, {
+					stroke: arrow.color,
+					fill: arrow.color,
+					strokeWidth: arrow.strokeWidth,
+					roughness: 1.2,
+					bowing: 2,
+					fillStyle: 'solid'
+				});
 			} else if (anno.type === "ellipse") {
 				const ellipse = anno as EllipseAnnotation;
 				ctx.strokeStyle = ellipse.strokeColor;
@@ -399,12 +416,17 @@ export default function AnnotationCanvas() {
 				ctx.stroke();
 			} else if (anno.type === "line") {
 				const line = anno as LineAnnotation;
-				ctx.strokeStyle = line.color;
-				ctx.lineWidth = line.strokeWidth;
-				ctx.beginPath();
-				ctx.moveTo(line.startX, line.startY);
-				ctx.lineTo(line.endX, line.endY);
-				ctx.stroke();
+				
+				// Create Rough.js instance for hand-drawn style
+				const rc = rough.canvas(canvas);
+				
+				// Draw the line with hand-drawn style
+				rc.line(line.startX, line.startY, line.endX, line.endY, {
+					stroke: line.color,
+					strokeWidth: line.strokeWidth,
+					roughness: 1.2,
+					bowing: 2
+				});
 			} else if (anno.type === "highlight") {
 				const highlight = anno as HighlightAnnotation;
 				ctx.strokeStyle = highlight.color;
