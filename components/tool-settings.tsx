@@ -12,12 +12,14 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
+import { Type, Heading, Code } from "lucide-react";
 
 export interface ToolSettingsProps {
 	activeToolType: Tool | undefined;
@@ -257,6 +259,59 @@ export default function ToolSettings({
 								</TooltipTrigger>
 								<TooltipContent>Font Size</TooltipContent>
 							</Tooltip>
+							<div className="flex items-center gap-1">
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Button
+											variant={fontFamily === "Arial, sans-serif" ? "default" : "outline"}
+											size="sm"
+											className="h-8 w-8 p-0"
+											onClick={() => {
+												setFontFamily("Arial, sans-serif");
+												handleSettingChange("fontFamily", "Arial, sans-serif");
+											}}
+											aria-label="Sans-serif font"
+										>
+											<Type className="h-4 w-4" />
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent>Sans-serif (Arial)</TooltipContent>
+								</Tooltip>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Button
+											variant={fontFamily === "Georgia, serif" ? "default" : "outline"}
+											size="sm"
+											className="h-8 w-8 p-0"
+											onClick={() => {
+												setFontFamily("Georgia, serif");
+												handleSettingChange("fontFamily", "Georgia, serif");
+											}}
+											aria-label="Serif font"
+										>
+											<Heading className="h-4 w-4" />
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent>Serif (Georgia)</TooltipContent>
+								</Tooltip>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Button
+											variant={fontFamily === "Monaco, monospace" ? "default" : "outline"}
+											size="sm"
+											className="h-8 w-8 p-0"
+											onClick={() => {
+												setFontFamily("Monaco, monospace");
+												handleSettingChange("fontFamily", "Monaco, monospace");
+											}}
+											aria-label="Monospace font"
+										>
+											<Code className="h-4 w-4" />
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent>Monospace (Monaco)</TooltipContent>
+								</Tooltip>
+							</div>
 							<Tooltip>
 								<TooltipTrigger asChild>
 									<Input
