@@ -44,6 +44,14 @@ import {
 	Tool,
 	Point,
 	Annotation,
+	RectangleAnnotation,
+	TextAnnotation,
+	ArrowAnnotation,
+	LineAnnotation,
+	EllipseAnnotation,
+	HighlightAnnotation,
+	PixelateAreaAnnotation,
+	SpotlightAreaAnnotation,
 	DEFAULT_STROKE_COLOR,
 	DEFAULT_FILL_COLOR,
 	DEFAULT_HIGHLIGHT_COLOR,
@@ -246,7 +254,7 @@ export default function AnnotationCanvas() {
 			ctx.font = "20px Arial";
 			ctx.textAlign = "center";
 			ctx.fillText(
-				"Drop an image here or click to upload",
+				"Drop an image here, click to upload, or paste from clipboard",
 				canvasEl.width / 2,
 				canvasEl.height / 2,
 			);
@@ -687,6 +695,49 @@ export default function AnnotationCanvas() {
 		e.preventDefault();
 		e.stopPropagation();
 	};
+
+	// Add clipboard paste functionality
+	useEffect(() => {
+		const handlePaste = async (e: ClipboardEvent) => {
+			// Only handle paste when not typing in text input
+			if (textInputPosition || (e.target as HTMLElement)?.tagName === 'INPUT') {
+				return;
+			}
+			
+			if (isCanvasLoading || isLoadingHistory) {
+				return;
+			}
+
+			const items = e.clipboardData?.items;
+			if (!items) return;
+
+			for (let i = 0; i < items.length; i++) {
+				const item = items[i];
+				if (item.type.indexOf('image') !== -1) {
+					e.preventDefault();
+					const blob = item.getAsFile();
+					if (blob) {
+						// Create a File object from the blob for consistency with existing upload flow
+						const file = new File([blob], `pasted-image-${Date.now()}.png`, {
+							type: blob.type || 'image/png',
+						});
+						
+						await handleImageUpload(file);
+						toast({
+							title: "Image pasted successfully",
+							description: "Your pasted image has been loaded into the canvas.",
+						});
+					}
+					break;
+				}
+			}
+		};
+
+		document.addEventListener('paste', handlePaste);
+		return () => {
+			document.removeEventListener('paste', handlePaste);
+		};
+	}, [textInputPosition, isCanvasLoading, isLoadingHistory, handleImageUpload, toast]);
 	const getMousePosition = (e: React.MouseEvent): Point => {
 		const canvas = canvasRef.current;
 		if (!canvas) return { x: 0, y: 0 };
@@ -1270,6 +1321,12 @@ export default function AnnotationCanvas() {
 					if (e.metaKey || e.ctrlKey) {
 						e.preventDefault();
 						annotationHistory.undo();
+					}
+					break;
+				case "v":
+					if (e.metaKey || e.ctrlKey) {
+						// Let the paste event handler handle this
+						// Don't prevent default here as we want the paste event to fire
 					}
 					break;
 				case "backspace":
