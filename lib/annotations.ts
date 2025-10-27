@@ -25,6 +25,7 @@ export interface BaseAnnotation {
 	y: number;
 	width: number;
 	height: number;
+	hidden?: boolean;
 }
 
 export interface RectangleAnnotation extends BaseAnnotation {

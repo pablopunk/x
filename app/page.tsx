@@ -5,7 +5,11 @@ export default function HomePage() {
 	return (
 		<main className="h-screen w-screen bg-muted/40">
 			<OfflineStatus />
-			<AnnotationCanvas />
+			<div className="flex h-full">
+				<div className="flex-1">
+					<AnnotationCanvas />
+				</div>
+			</div>
 		</main>
 	);
 }

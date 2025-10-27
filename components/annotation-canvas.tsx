@@ -40,6 +40,7 @@ import { ThemeToggleButton } from "@/components/theme-toggle-button";
 import Image from "next/image";
 import ToolSettings from "@/components/tool-settings";
 import { useCanvasActions } from "@/hooks/use-canvas-actions";
+import LayersSidebar from "@/components/layers-sidebar";
 import {
 	Tool,
 	Point,
@@ -263,13 +264,14 @@ export default function AnnotationCanvas() {
 
 		ctx.drawImage(mainImage, 0, 0, canvas.width, canvas.height);
 
-		const pixelateAreas = annotationHistory.state.filter(
+		const visibleAnnotations = annotationHistory.state.filter((a) => !a.hidden);
+		const pixelateAreas = visibleAnnotations.filter(
 			(a) => a.type === "pixelate-area",
 		) as PixelateAreaAnnotation[];
-		const spotlightAreas = annotationHistory.state.filter(
+		const spotlightAreas = visibleAnnotations.filter(
 			(a) => a.type === "spotlight-area",
 		) as SpotlightAreaAnnotation[];
-		const shapeAnnotations = annotationHistory.state.filter(
+		const shapeAnnotations = visibleAnnotations.filter(
 			(a) => a.type !== "pixelate-area" && a.type !== "spotlight-area",
 		);
 
@@ -700,10 +702,10 @@ export default function AnnotationCanvas() {
 	useEffect(() => {
 		const handlePaste = async (e: ClipboardEvent) => {
 			// Only handle paste when not typing in text input
-			if (textInputPosition || (e.target as HTMLElement)?.tagName === 'INPUT') {
+			if (textInputPosition || (e.target as HTMLElement)?.tagName === "INPUT") {
 				return;
 			}
-			
+
 			if (isCanvasLoading || isLoadingHistory) {
 				return;
 			}
@@ -713,15 +715,15 @@ export default function AnnotationCanvas() {
 
 			for (let i = 0; i < items.length; i++) {
 				const item = items[i];
-				if (item.type.indexOf('image') !== -1) {
+				if (item.type.indexOf("image") !== -1) {
 					e.preventDefault();
 					const blob = item.getAsFile();
 					if (blob) {
 						// Create a File object from the blob for consistency with existing upload flow
 						const file = new File([blob], `pasted-image-${Date.now()}.png`, {
-							type: blob.type || 'image/png',
+							type: blob.type || "image/png",
 						});
-						
+
 						await handleImageUpload(file);
 						toast({
 							title: "Image pasted successfully",
@@ -733,11 +735,17 @@ export default function AnnotationCanvas() {
 			}
 		};
 
-		document.addEventListener('paste', handlePaste);
+		document.addEventListener("paste", handlePaste);
 		return () => {
-			document.removeEventListener('paste', handlePaste);
+			document.removeEventListener("paste", handlePaste);
 		};
-	}, [textInputPosition, isCanvasLoading, isLoadingHistory, handleImageUpload, toast]);
+	}, [
+		textInputPosition,
+		isCanvasLoading,
+		isLoadingHistory,
+		handleImageUpload,
+		toast,
+	]);
 	const getMousePosition = (e: React.MouseEvent): Point => {
 		const canvas = canvasRef.current;
 		if (!canvas) return { x: 0, y: 0 };
@@ -1084,6 +1092,36 @@ export default function AnnotationCanvas() {
 			);
 			setSelectedAnnotationId(null);
 		}
+	};
+
+	const handleLayerSelect = (id: string | null) => {
+		setSelectedAnnotationId(id);
+		if (id) {
+			switchTool("cursor");
+		}
+	};
+
+	const handleLayerDelete = (id: string) => {
+		annotationHistory.set((prev) => prev.filter((anno) => anno.id !== id));
+	};
+
+	const handleLayerVisibilityToggle = (id: string) => {
+		annotationHistory.set((prev) =>
+			prev.map((anno) =>
+				anno.id === id ? { ...anno, hidden: !anno.hidden } : anno,
+			),
+		);
+	};
+
+	const handleLayerReorder = (fromIndex: number, toIndex: number) => {
+		annotationHistory.set((prev) => {
+			const newAnnotations = [...prev];
+			const reversedFromIndex = prev.length - 1 - fromIndex;
+			const reversedToIndex = prev.length - 1 - toIndex;
+			const [movedAnnotation] = newAnnotations.splice(reversedFromIndex, 1);
+			newAnnotations.splice(reversedToIndex, 0, movedAnnotation);
+			return newAnnotations;
+		});
 	};
 
 	const handleCrop = async (
@@ -1650,6 +1688,15 @@ export default function AnnotationCanvas() {
 					isLoading={isLoadingHistory || isCanvasLoading}
 				/>
 			</div>
+
+			<LayersSidebar
+				annotations={annotationHistory.state}
+				selectedAnnotation={selectedAnnotationId}
+				onAnnotationSelect={handleLayerSelect}
+				onAnnotationDelete={handleLayerDelete}
+				onAnnotationVisibilityToggle={handleLayerVisibilityToggle}
+				onAnnotationReorder={handleLayerReorder}
+			/>
 		</TooltipProvider>
 	);
 }
