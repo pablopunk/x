@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https:////github.com/pablopunk/x/blob/main/public/screenshot.webp?raw=true" alt="screenshot" width="80%" />
+  <img src="https://github.com/pablopunk/x/blob/main/public/screenshot.webp?raw=true" alt="screenshot" width="80%" />
 </p>
 
 ## Features
