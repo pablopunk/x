@@ -1,22 +1,31 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import type { Annotation, TextAnnotation } from "@/lib/annotations";
 import {
+	ArrowUpRight,
+	Circle,
 	Eye,
 	EyeOff,
-	Trash2,
 	GripVertical,
-	Square,
-	Circle,
-	Type,
-	ArrowUpRight,
-	Minus,
 	Highlighter,
+	Minus,
+	Square,
+	Trash2,
+	Type,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Annotation, TextAnnotation } from "@/lib/annotations";
+import React, { useState, useCallback, useEffect, useRef, memo } from "react";
+
+// Constants
+const PANEL_WIDTH = 256; // w-64 = 256px
+const PANEL_MAX_HEIGHT_VH = 0.7; // max-h-[70vh]
+const PADDING = 20;
+const TOOLBAR_HEIGHT = 80; // Approximate toolbar height
+const SNAP_ANIMATION_DURATION = 400;
+const RESIZE_ANIMATION_DURATION = 300;
+const STORAGE_KEY = "layersPanelPosition";
 
 interface LayersSidebarProps {
 	annotations: Annotation[];
@@ -25,6 +34,11 @@ interface LayersSidebarProps {
 	onAnnotationDelete: (id: string) => void;
 	onAnnotationVisibilityToggle: (id: string) => void;
 	onAnnotationReorder: (fromIndex: number, toIndex: number) => void;
+}
+
+interface Position {
+	x: number;
+	y: number;
 }
 
 const getAnnotationIcon = (annotation: Annotation) => {
@@ -56,11 +70,12 @@ const getAnnotationLabel = (annotation: Annotation): string => {
 			return "Rectangle";
 		case "ellipse":
 			return "Ellipse";
-		case "text":
+		case "text": {
 			const textAnn = annotation as TextAnnotation;
 			return textAnn.text.length > 15
 				? `Text: "${textAnn.text.substring(0, 15)}..."`
 				: `Text: "${textAnn.text}"`;
+		}
 		case "arrow":
 			return "Arrow";
 		case "line":
@@ -72,7 +87,7 @@ const getAnnotationLabel = (annotation: Annotation): string => {
 		case "pixelate-area":
 			return "Pixelate";
 		default:
-			return (annotation as any).type;
+			return annotation.type;
 	}
 };
 
@@ -86,6 +101,143 @@ const getAnnotationColor = (annotation: Annotation): string => {
 	return "#94a3b8";
 };
 
+// Memoized Layer Item Component
+const LayerItem = memo(
+	React.forwardRef<
+		HTMLDivElement,
+		{
+			annotation: Annotation;
+			index: number;
+			isSelected: boolean;
+			isFocused: boolean;
+			draggedIndex: number | null;
+			dragOverIndex: number | null;
+			onDragStart: (e: React.DragEvent, index: number) => void;
+			onDragOver: (e: React.DragEvent, index: number) => void;
+			onDragLeave: () => void;
+			onDrop: (e: React.DragEvent, index: number) => void;
+			onDragEnd: () => void;
+			onSelect: (id: string | null) => void;
+			onVisibilityToggle: (id: string) => void;
+			onDelete: (id: string) => void;
+			onKeyDown: (e: React.KeyboardEvent, index: number) => void;
+			totalLayers: number;
+		}
+	>(
+		(
+			{
+				annotation,
+				index,
+				isSelected,
+				isFocused,
+				draggedIndex,
+				dragOverIndex,
+				onDragStart,
+				onDragOver,
+				onDragLeave,
+				onDrop,
+				onDragEnd,
+				onSelect,
+				onVisibilityToggle,
+				onDelete,
+				onKeyDown,
+				totalLayers,
+			},
+			ref,
+		) => {
+			const isHidden = annotation.hidden ?? false;
+			const color = getAnnotationColor(annotation);
+
+			return (
+				<div
+					ref={ref}
+					key={annotation.id}
+					draggable
+					onDragStart={(e) => onDragStart(e, index)}
+					onDragOver={(e) => onDragOver(e, index)}
+					onDragLeave={onDragLeave}
+					onDrop={(e) => onDrop(e, index)}
+					onDragEnd={onDragEnd}
+					// biome-ignore lint/a11y/useSemanticElements: Div needed for drag-and-drop functionality
+					role="button"
+					tabIndex={isFocused ? 0 : -1}
+					aria-label={getAnnotationLabel(annotation)}
+					aria-selected={isSelected}
+					onKeyDown={(e) => onKeyDown(e, index)}
+					className={`group flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+						isSelected
+							? "bg-primary/10 border-primary/30"
+							: "hover:bg-muted/50 border-border"
+					} ${
+						dragOverIndex === index ? "border-primary bg-primary/5" : ""
+					} ${draggedIndex === index ? "opacity-50" : ""} ${
+						isHidden ? "opacity-40" : ""
+					}`}
+					onClick={() => onSelect(isSelected ? null : annotation.id)}
+				>
+					<GripVertical className="h-4 w-4 text-muted-foreground/50 cursor-grab active:cursor-grabbing" />
+
+					<div
+						className="h-4 w-4 rounded-full border-2 flex-shrink-0"
+						style={{ backgroundColor: color, borderColor: color }}
+					/>
+
+					<div className="flex-1 min-w-0">
+						<div className="flex items-center gap-2">
+							{getAnnotationIcon(annotation)}
+							<span className="text-sm font-medium truncate">
+								{getAnnotationLabel(annotation)}
+							</span>
+						</div>
+					</div>
+
+					<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-8 w-8 p-0"
+							aria-label={isHidden ? "Show layer" : "Hide layer"}
+							onClick={(e) => {
+								e.stopPropagation();
+								onVisibilityToggle(annotation.id);
+							}}
+						>
+							{isHidden ? (
+								<EyeOff className="h-4 w-4" />
+							) : (
+								<Eye className="h-4 w-4" />
+							)}
+						</Button>
+
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+							aria-label="Delete layer"
+							onClick={(e) => {
+								e.stopPropagation();
+								onDelete(annotation.id);
+							}}
+						>
+							<Trash2 className="h-4 w-4" />
+						</Button>
+					</div>
+				</div>
+			);
+		},
+	),
+);
+
+LayerItem.displayName = "LayerItem";
+
+type DropZone =
+	| "top-left"
+	| "top-right"
+	| "left"
+	| "right"
+	| "bottom-left"
+	| "bottom-right";
+
 export default function LayersSidebar({
 	annotations,
 	selectedAnnotation,
@@ -96,81 +248,130 @@ export default function LayersSidebar({
 }: LayersSidebarProps) {
 	const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 	const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-	const [position, setPosition] = useState({ x: 0, y: 0 });
+	const [position, setPosition] = useState<Position>({ x: 0, y: 0 });
 	const [isDraggingPanel, setIsDraggingPanel] = useState(false);
-	const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+	const [dragStart, setDragStart] = useState<Position>({ x: 0, y: 0 });
 	const [isSnapping, setIsSnapping] = useState(false);
-	const [snapTarget, setSnapTarget] = useState({ x: 0, y: 0 });
+	const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+	const positionRef = useRef<Position>({ x: 0, y: 0 });
+	const layerRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-	// Define drop zones
-	const dropZones = {
-		"top-left": { x: 20, y: 20 },
-		"top-right": { x: 0, y: 20 }, // Will be calculated as window width - panel width
-		left: { x: 20, y: 0 }, // Will be calculated as window height / 2 - panel height / 2
-		right: { x: 0, y: 0 }, // Will be calculated as window width - panel width, window height / 2 - panel height / 2
-		"bottom-left": { x: 20, y: 0 }, // Will be calculated as window height - panel height
-		"bottom-right": { x: 0, y: 0 }, // Will be calculated as window width - panel width, window height - panel height
-	};
+	// Keep ref in sync with state
+	useEffect(() => {
+		positionRef.current = position;
+	}, [position]);
 
-	const getDropZonePosition = (zone: keyof typeof dropZones) => {
-		const panelWidth = 256; // w-64 = 256px
-		const panelHeight = window.innerHeight * 0.7; // max-h-[70vh]
-		const padding = 20;
-		const toolbarHeight = 80; // Approximate toolbar height
+	// Set initial focus to first layer
+	useEffect(() => {
+		if (annotations.length > 0 && focusedIndex === -1) {
+			setFocusedIndex(0);
+		}
+	}, [annotations.length, focusedIndex]);
+
+	// Update refs array size when annotations change
+	useEffect(() => {
+		layerRefs.current = layerRefs.current.slice(0, annotations.length);
+	}, [annotations.length]);
+
+	// Focus the layer element when focusedIndex changes
+	useEffect(() => {
+		if (focusedIndex >= 0 && layerRefs.current[focusedIndex]) {
+			layerRefs.current[focusedIndex]?.focus();
+		}
+	}, [focusedIndex]);
+
+	const getDropZonePosition = useCallback((zone: DropZone): Position => {
+		const panelHeight = window.innerHeight * PANEL_MAX_HEIGHT_VH;
 
 		switch (zone) {
 			case "top-left":
-				return { x: padding, y: padding + toolbarHeight };
+				return { x: PADDING, y: PADDING + TOOLBAR_HEIGHT };
 			case "top-right":
 				return {
-					x: window.innerWidth - panelWidth - padding,
-					y: padding + toolbarHeight,
+					x: window.innerWidth - PANEL_WIDTH - PADDING,
+					y: PADDING + TOOLBAR_HEIGHT,
 				};
 			case "left":
-				return { x: padding, y: window.innerHeight / 2 - panelHeight / 2 };
+				return { x: PADDING, y: window.innerHeight / 2 - panelHeight / 2 };
 			case "right":
 				return {
-					x: window.innerWidth - panelWidth - padding,
+					x: window.innerWidth - PANEL_WIDTH - PADDING,
 					y: window.innerHeight / 2 - panelHeight / 2,
 				};
 			case "bottom-left":
-				return { x: padding, y: window.innerHeight - panelHeight - padding };
+				return { x: PADDING, y: window.innerHeight - panelHeight - PADDING };
 			case "bottom-right":
 				return {
-					x: window.innerWidth - panelWidth - padding,
-					y: window.innerHeight - panelHeight - padding,
+					x: window.innerWidth - PANEL_WIDTH - PADDING,
+					y: window.innerHeight - panelHeight - PADDING,
 				};
 			default:
 				return { x: 0, y: 0 };
 		}
-	};
+	}, []);
 
-	const findClosestDropZone = (currentX: number, currentY: number) => {
-		let closestZone: keyof typeof dropZones = "right";
-		let minDistance = Infinity;
+	const findClosestDropZone = useCallback(
+		(currentX: number, currentY: number): DropZone => {
+			let closestZone: DropZone = "right";
+			let minDistance = Number.POSITIVE_INFINITY;
 
-		Object.keys(dropZones).forEach((zone) => {
-			const zonePosition = getDropZonePosition(zone as keyof typeof dropZones);
-			const distance = Math.sqrt(
-				Math.pow(currentX - zonePosition.x, 2) +
-					Math.pow(currentY - zonePosition.y, 2),
-			);
+			const zones: DropZone[] = [
+				"top-left",
+				"top-right",
+				"left",
+				"right",
+				"bottom-left",
+				"bottom-right",
+			];
 
-			if (distance < minDistance) {
-				minDistance = distance;
-				closestZone = zone as keyof typeof dropZones;
+			for (const zone of zones) {
+				const zonePosition = getDropZonePosition(zone);
+				const distance = Math.sqrt(
+					(currentX - zonePosition.x) ** 2 + (currentY - zonePosition.y) ** 2,
+				);
+
+				if (distance < minDistance) {
+					minDistance = distance;
+					closestZone = zone;
+				}
 			}
-		});
 
-		return closestZone;
-	};
+			return closestZone;
+		},
+		[getDropZonePosition],
+	);
 
-	const handleDeleteClick = (id: string) => {
-		onAnnotationDelete(id);
-		if (selectedAnnotation === id) {
-			onAnnotationSelect(null);
-		}
-	};
+	// Reusable animation function
+	const animateToPosition = useCallback(
+		(targetX: number, targetY: number, duration: number) => {
+			const startX = positionRef.current.x;
+			const startY = positionRef.current.y;
+			const startTime = Date.now();
+
+			setIsSnapping(true);
+
+			const animate = () => {
+				const elapsed = Date.now() - startTime;
+				const progress = Math.min(elapsed / duration, 1);
+				// Ease out cubic for smooth deceleration
+				const easeProgress = 1 - (1 - progress) ** 3;
+
+				setPosition({
+					x: startX + (targetX - startX) * easeProgress,
+					y: startY + (targetY - startY) * easeProgress,
+				});
+
+				if (progress < 1) {
+					requestAnimationFrame(animate);
+				} else {
+					setIsSnapping(false);
+				}
+			};
+
+			requestAnimationFrame(animate);
+		},
+		[],
+	);
 
 	const handleDragStart = (e: React.DragEvent, index: number) => {
 		setDraggedIndex(index);
@@ -224,49 +425,62 @@ export default function LayersSidebar({
 
 	const handlePanelMouseUp = useCallback(() => {
 		if (isDraggingPanel) {
-			const closestZone = findClosestDropZone(position.x, position.y);
+			const closestZone = findClosestDropZone(
+				positionRef.current.x,
+				positionRef.current.y,
+			);
 			const snapPosition = getDropZonePosition(closestZone);
-			setSnapTarget(snapPosition);
-			setIsSnapping(true);
-
-			// Animate to snap position
-			const startX = position.x;
-			const startY = position.y;
-			const targetX = snapPosition.x;
-			const targetY = snapPosition.y;
-			const duration = 400; // ms
-			const startTime = Date.now();
-
-			const animate = () => {
-				const elapsed = Date.now() - startTime;
-				const progress = Math.min(elapsed / duration, 1);
-				// Ease out cubic for smooth deceleration
-				const easeProgress = 1 - Math.pow(1 - progress, 3);
-
-				setPosition({
-					x: startX + (targetX - startX) * easeProgress,
-					y: startY + (targetY - startY) * easeProgress,
-				});
-
-				if (progress < 1) {
-					requestAnimationFrame(animate);
-				} else {
-					setIsSnapping(false);
-				}
-			};
-
-			requestAnimationFrame(animate);
+			animateToPosition(
+				snapPosition.x,
+				snapPosition.y,
+				SNAP_ANIMATION_DURATION,
+			);
 		}
 		setIsDraggingPanel(false);
-	}, [isDraggingPanel, position.x, position.y]);
+	}, [
+		isDraggingPanel,
+		findClosestDropZone,
+		getDropZonePosition,
+		animateToPosition,
+	]);
 
+	// Load position from localStorage on mount
 	useEffect(() => {
-		// Set initial position after mount to default "right" drop zone
-		if (typeof window !== "undefined" && position.x === 0 && position.y === 0) {
-			const rightPosition = getDropZonePosition("right");
-			setPosition(rightPosition);
+		if (typeof window !== "undefined") {
+			try {
+				const savedPosition = localStorage.getItem(STORAGE_KEY);
+				if (savedPosition) {
+					const parsed = JSON.parse(savedPosition) as Position;
+					setPosition(parsed);
+					positionRef.current = parsed;
+				} else {
+					// Set default position to "right" drop zone
+					const rightPosition = getDropZonePosition("right");
+					setPosition(rightPosition);
+					positionRef.current = rightPosition;
+				}
+			} catch (error) {
+				console.error(
+					"Failed to load panel position from localStorage:",
+					error,
+				);
+				const rightPosition = getDropZonePosition("right");
+				setPosition(rightPosition);
+				positionRef.current = rightPosition;
+			}
 		}
-	}, [position.x, position.y]);
+	}, [getDropZonePosition]);
+
+	// Save position to localStorage when it changes (debounced via snap completion)
+	useEffect(() => {
+		if (!isSnapping && position.x !== 0 && position.y !== 0) {
+			try {
+				localStorage.setItem(STORAGE_KEY, JSON.stringify(position));
+			} catch (error) {
+				console.error("Failed to save panel position to localStorage:", error);
+			}
+		}
+	}, [position, isSnapping]);
 
 	useEffect(() => {
 		if (isDraggingPanel) {
@@ -279,48 +493,86 @@ export default function LayersSidebar({
 		}
 	}, [isDraggingPanel, handlePanelMouseMove, handlePanelMouseUp]);
 
+	// Handle window resize - snap to closest zone
 	useEffect(() => {
 		const handleWindowResize = () => {
-			// Snap to closest drop zone on window resize
-			const closestZone = findClosestDropZone(position.x, position.y);
+			const closestZone = findClosestDropZone(
+				positionRef.current.x,
+				positionRef.current.y,
+			);
 			const snapPosition = getDropZonePosition(closestZone);
-			setSnapTarget(snapPosition);
-			setIsSnapping(true);
-
-			// Animate to snap position
-			const startX = position.x;
-			const startY = position.y;
-			const targetX = snapPosition.x;
-			const targetY = snapPosition.y;
-			const duration = 300; // ms
-			const startTime = Date.now();
-
-			const animate = () => {
-				const elapsed = Date.now() - startTime;
-				const progress = Math.min(elapsed / duration, 1);
-				// Ease out cubic for smooth deceleration
-				const easeProgress = 1 - Math.pow(1 - progress, 3);
-
-				setPosition({
-					x: startX + (targetX - startX) * easeProgress,
-					y: startY + (targetY - startY) * easeProgress,
-				});
-
-				if (progress < 1) {
-					requestAnimationFrame(animate);
-				} else {
-					setIsSnapping(false);
-				}
-			};
-
-			requestAnimationFrame(animate);
+			animateToPosition(
+				snapPosition.x,
+				snapPosition.y,
+				RESIZE_ANIMATION_DURATION,
+			);
 		};
 
 		window.addEventListener("resize", handleWindowResize);
 		return () => {
 			window.removeEventListener("resize", handleWindowResize);
 		};
-	}, [position.x, position.y]);
+	}, [findClosestDropZone, getDropZonePosition, animateToPosition]);
+
+	const handleDeleteClick = useCallback(
+		(id: string) => {
+			onAnnotationDelete(id);
+			if (selectedAnnotation === id) {
+				onAnnotationSelect(null);
+			}
+		},
+		[onAnnotationDelete, onAnnotationSelect, selectedAnnotation],
+	);
+
+	const handleLayerKeyDown = useCallback(
+		(e: React.KeyboardEvent, index: number) => {
+			const reversedAnnotations = annotations.slice().reverse();
+			const annotation = reversedAnnotations[index];
+
+			switch (e.key) {
+				case "ArrowDown":
+					e.preventDefault();
+					if (index < annotations.length - 1) {
+						setFocusedIndex(index + 1);
+					}
+					break;
+				case "ArrowUp":
+					e.preventDefault();
+					if (index > 0) {
+						setFocusedIndex(index - 1);
+					}
+					break;
+				case "Enter":
+				case " ":
+					e.preventDefault();
+					onAnnotationSelect(
+						selectedAnnotation === annotation.id ? null : annotation.id,
+					);
+					break;
+				case "Delete":
+				case "Backspace":
+					e.preventDefault();
+					handleDeleteClick(annotation.id);
+					// Adjust focus after deletion
+					if (index === annotations.length - 1 && index > 0) {
+						setFocusedIndex(index - 1);
+					}
+					break;
+				case "v":
+				case "h":
+					e.preventDefault();
+					onAnnotationVisibilityToggle(annotation.id);
+					break;
+			}
+		},
+		[
+			annotations,
+			selectedAnnotation,
+			onAnnotationSelect,
+			onAnnotationVisibilityToggle,
+			handleDeleteClick,
+		],
+	);
 
 	if (annotations.length === 0) {
 		return null;
@@ -335,13 +587,15 @@ export default function LayersSidebar({
 					top: `${position.y}px`,
 					maxHeight: "70vh",
 				}}
+				role="complementary"
+				aria-label="Layers panel"
 			>
-				<CardTitle
+				<h2
 					className="text-sm font-semibold select-none p-3 cursor-move"
 					onMouseDown={handlePanelMouseDown}
 				>
 					Layers
-				</CardTitle>
+				</h2>
 				<Separator />
 				<CardContent className="p-0">
 					<div className="max-h-[60vh] overflow-y-auto">
@@ -354,86 +608,30 @@ export default function LayersSidebar({
 								annotations
 									.slice()
 									.reverse()
-									.map((annotation, index) => {
-										const isSelected = selectedAnnotation === annotation.id;
-										const isHidden = annotation.hidden ?? false;
-										const color = getAnnotationColor(annotation);
-
-										return (
-											<div
-												key={annotation.id}
-												draggable
-												onDragStart={(e) => handleDragStart(e, index)}
-												onDragOver={(e) => handleDragOver(e, index)}
-												onDragLeave={handleDragLeave}
-												onDrop={(e) => handleDrop(e, index)}
-												onDragEnd={handleDragEnd}
-												className={`group flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
-													isSelected
-														? "bg-primary/10 border-primary/30"
-														: "hover:bg-muted/50 border-border"
-												} ${
-													dragOverIndex === index
-														? "border-primary bg-primary/5"
-														: ""
-												} ${draggedIndex === index ? "opacity-50" : ""} ${
-													isHidden ? "opacity-40" : ""
-												}`}
-												onClick={() =>
-													onAnnotationSelect(isSelected ? null : annotation.id)
-												}
-											>
-												<GripVertical className="h-4 w-4 text-muted-foreground/50 cursor-grab active:cursor-grabbing" />
-
-												<div
-													className="h-4 w-4 rounded-full border-2 flex-shrink-0"
-													style={{ backgroundColor: color, borderColor: color }}
-												/>
-
-												<div className="flex-1 min-w-0">
-													<div className="flex items-center gap-2">
-														{getAnnotationIcon(annotation)}
-														<span className="text-sm font-medium truncate">
-															{getAnnotationLabel(annotation)}
-														</span>
-													</div>
-													<span className="text-xs text-muted-foreground">
-														Layer {annotations.length - index}
-													</span>
-												</div>
-
-												<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-													<Button
-														variant="ghost"
-														size="sm"
-														className="h-8 w-8 p-0"
-														onClick={(e) => {
-															e.stopPropagation();
-															onAnnotationVisibilityToggle(annotation.id);
-														}}
-													>
-														{isHidden ? (
-															<EyeOff className="h-4 w-4" />
-														) : (
-															<Eye className="h-4 w-4" />
-														)}
-													</Button>
-
-													<Button
-														variant="ghost"
-														size="sm"
-														className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-														onClick={(e) => {
-															e.stopPropagation();
-															handleDeleteClick(annotation.id);
-														}}
-													>
-														<Trash2 className="h-4 w-4" />
-													</Button>
-												</div>
-											</div>
-										);
-									})
+									.map((annotation, index) => (
+										<LayerItem
+											key={annotation.id}
+											ref={(el) => {
+												layerRefs.current[index] = el;
+											}}
+											annotation={annotation}
+											index={index}
+											isSelected={selectedAnnotation === annotation.id}
+											isFocused={focusedIndex === index}
+											draggedIndex={draggedIndex}
+											dragOverIndex={dragOverIndex}
+											onDragStart={handleDragStart}
+											onDragOver={handleDragOver}
+											onDragLeave={handleDragLeave}
+											onDrop={handleDrop}
+											onDragEnd={handleDragEnd}
+											onSelect={onAnnotationSelect}
+											onVisibilityToggle={onAnnotationVisibilityToggle}
+											onDelete={handleDeleteClick}
+											onKeyDown={handleLayerKeyDown}
+											totalLayers={annotations.length}
+										/>
+									))
 							)}
 						</div>
 					</div>
