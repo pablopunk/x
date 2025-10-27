@@ -12,7 +12,7 @@ const STATIC_FILES = [
   '/favicon/web-app-manifest-512x512.png',
   '/favicon/site.webmanifest',
   '/logo.png',
-  '/screenshot.jpg'
+  '/screenshot.webp',
 ];
 
 // Install event - cache static files

@@ -32,7 +32,7 @@ export const metadata: Metadata = {
 		siteName: "X",
 		images: [
 			{
-				url: "/screenshot.jpg",
+				url: "/screenshot.webp",
 				width: 1200,
 				height: 630,
 				alt: "X screenshot",
