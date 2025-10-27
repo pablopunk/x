@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { Annotation, TextAnnotation } from "@/lib/annotations";
 import {
@@ -86,8 +86,11 @@ const getAnnotationLabel = (annotation: Annotation): string => {
 			return "Spotlight";
 		case "pixelate-area":
 			return "Pixelate";
-		default:
-			return annotation.type;
+		default: {
+			// This should never happen as all cases are covered
+			const exhaustiveCheck: never = annotation;
+			return String(exhaustiveCheck);
+		}
 	}
 };
 
@@ -121,7 +124,6 @@ const LayerItem = memo(
 			onVisibilityToggle: (id: string) => void;
 			onDelete: (id: string) => void;
 			onKeyDown: (e: React.KeyboardEvent, index: number) => void;
-			totalLayers: number;
 		}
 	>(
 		(
@@ -141,7 +143,6 @@ const LayerItem = memo(
 				onVisibilityToggle,
 				onDelete,
 				onKeyDown,
-				totalLayers,
 			},
 			ref,
 		) => {
@@ -491,6 +492,7 @@ export default function LayersSidebar({
 				document.removeEventListener("mouseup", handlePanelMouseUp);
 			};
 		}
+		return undefined;
 	}, [isDraggingPanel, handlePanelMouseMove, handlePanelMouseUp]);
 
 	// Handle window resize - snap to closest zone
@@ -629,7 +631,6 @@ export default function LayersSidebar({
 											onVisibilityToggle={onAnnotationVisibilityToggle}
 											onDelete={handleDeleteClick}
 											onKeyDown={handleLayerKeyDown}
-											totalLayers={annotations.length}
 										/>
 									))
 							)}

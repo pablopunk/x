@@ -1,10 +1,10 @@
 "use client";
 
+import { useToast } from "@/components/ui/use-toast";
 import { useCallback } from "react";
-import { useToast } from "@/hooks/use-toast";
 
 export function useCanvasActions(
-	canvasRef: React.RefObject<HTMLCanvasElement>,
+	canvasRef: React.RefObject<HTMLCanvasElement | null>,
 	mainImage: HTMLImageElement | null,
 ) {
 	const { toast } = useToast();

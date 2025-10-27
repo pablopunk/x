@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { isEqual } from "@/lib/utils";
+import { useCallback, useState } from "react";
 
 interface HistoryState<T> {
 	past: T[];
@@ -25,9 +26,7 @@ export const useHistory = <T>(initialPresent: T) => {
 					? (newState as (prevState: T) => T)(currentHistory.present)
 					: newState;
 
-			if (
-				JSON.stringify(newPresent) === JSON.stringify(currentHistory.present)
-			) {
+			if (isEqual(newPresent, currentHistory.present)) {
 				return currentHistory;
 			}
 

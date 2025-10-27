@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun } from "lucide-react";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 export const ThemeToggleButton = () => {
-	const { theme, setTheme, resolvedTheme, systemTheme } = useTheme();
+	const { theme, setTheme, resolvedTheme } = useTheme();
 	const [mounted, setMounted] = useState(false);
 	const [manualTheme, setManualTheme] = useState<string>("system");
 
@@ -26,8 +26,6 @@ export const ThemeToggleButton = () => {
 				"(prefers-color-scheme: dark)",
 			).matches;
 			const initialTheme = systemIsDark ? "dark" : "light";
-
-			console.log("Converting system theme to explicit theme:", initialTheme);
 
 			if (setTheme) {
 				setTheme(initialTheme);
@@ -63,26 +61,16 @@ export const ThemeToggleButton = () => {
 
 	// Function to handle theme toggling (only between dark and light)
 	const handleToggleTheme = () => {
-		console.log("=== Theme Toggle Debug ===");
-		console.log("theme:", theme);
-		console.log("resolvedTheme:", resolvedTheme);
-		console.log("manualTheme:", manualTheme);
-
 		// Determine current theme
 		const currentTheme = theme || resolvedTheme || manualTheme;
 
 		// Toggle between dark and light only
 		const nextTheme = currentTheme === "dark" ? "light" : "dark";
 
-		console.log("currentTheme:", currentTheme);
-		console.log("nextTheme:", nextTheme);
-
 		// Try to use next-themes first
 		if (setTheme) {
-			console.log("Using next-themes setTheme");
 			setTheme(nextTheme);
 		} else {
-			console.log("next-themes not available, using manual approach");
 			// Fallback: manually manage theme
 			setManualTheme(nextTheme);
 			localStorage.setItem("theme", nextTheme);
@@ -97,8 +85,6 @@ export const ThemeToggleButton = () => {
 				root.classList.remove("dark");
 			}
 		}
-
-		console.log("=== End Debug ===");
 	};
 
 	// Don't render anything until mounted to prevent hydration mismatch
