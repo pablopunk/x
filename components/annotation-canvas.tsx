@@ -1,63 +1,63 @@
 "use client";
 
-import type React from "react";
-import { useState, useRef, useEffect, useCallback } from "react";
-import {
-	Eraser,
-	Square,
-	Eye,
-	Copy,
-	Save,
-	Type,
-	ArrowUpRight,
-	Circle,
-	Minus,
-	Highlighter,
-	Undo2,
-	Redo2,
-	MousePointer2,
-	Trash2,
-	Grid,
-	Crop,
-	Github,
-} from "lucide-react";
+import ImageHistoryTray from "@/components/image-history-tray";
+import LayersSidebar from "@/components/layers-sidebar";
+import { ThemeToggleButton } from "@/components/theme-toggle-button";
+import ToolSettings from "@/components/tool-settings";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/components/ui/use-toast";
+import { useCanvasActions } from "@/hooks/use-canvas-actions";
 import { useHistory as useAnnotationHistory } from "@/hooks/use-history";
 import { useImageHistory } from "@/hooks/use-image-history";
-import ImageHistoryTray from "@/components/image-history-tray";
-import { useToast } from "@/hooks/use-toast";
-import { useTheme } from "next-themes";
-import { ThemeToggleButton } from "@/components/theme-toggle-button";
-import Image from "next/image";
-import ToolSettings from "@/components/tool-settings";
-import { useCanvasActions } from "@/hooks/use-canvas-actions";
-import LayersSidebar from "@/components/layers-sidebar";
 import {
-	Tool,
-	Point,
-	Annotation,
-	RectangleAnnotation,
-	TextAnnotation,
-	ArrowAnnotation,
-	LineAnnotation,
-	EllipseAnnotation,
-	HighlightAnnotation,
-	PixelateAreaAnnotation,
-	SpotlightAreaAnnotation,
-	DEFAULT_STROKE_COLOR,
+	type Annotation,
+	type ArrowAnnotation,
 	DEFAULT_FILL_COLOR,
 	DEFAULT_HIGHLIGHT_COLOR,
 	DEFAULT_PIXEL_SIZE,
+	DEFAULT_STROKE_COLOR,
+	type EllipseAnnotation,
+	type HighlightAnnotation,
+	type LineAnnotation,
+	type PixelateAreaAnnotation,
+	type Point,
+	type RectangleAnnotation,
+	type SpotlightAreaAnnotation,
+	type TextAnnotation,
+	type Tool,
 } from "@/lib/annotations";
+import {
+	ArrowUpRight,
+	Circle,
+	Copy,
+	Crop,
+	Eraser,
+	Eye,
+	Github,
+	Grid,
+	Highlighter,
+	Minus,
+	MousePointer2,
+	Redo2,
+	Save,
+	Square,
+	Trash2,
+	Type,
+	Undo2,
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import Image from "next/image";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function AnnotationCanvas() {
 	const { theme, resolvedTheme } = useTheme();
@@ -77,7 +77,6 @@ export default function AnnotationCanvas() {
 		loadAndActivateEntryFromMetadata,
 		deleteHistoryEntry,
 		thumbnailCache,
-		setActiveHistoryEntryId,
 	} = useImageHistory();
 
 	const annotationHistory = useAnnotationHistory<Annotation[]>([]);
@@ -155,7 +154,7 @@ export default function AnnotationCanvas() {
 	}, [selectedAnnotationId, currentTool, getSelectedAnnotation]);
 
 	const handleSettingChange = useCallback(
-		<K extends keyof Annotation, V>(propName: K, value: V) => {
+		(propName: string, value: unknown) => {
 			if (currentTool === "cursor" && selectedAnnotationId) {
 				annotationHistory.set((prevAnnos) =>
 					prevAnnos.map((anno) => {
@@ -242,11 +241,8 @@ export default function AnnotationCanvas() {
 				if (mutedFgVar) {
 					placeholderTextHsl = mutedFgVar;
 				}
-			} catch (e) {
-				console.warn(
-					"Could not read theme CSS variables for canvas placeholder.",
-					e,
-				);
+			} catch {
+				// Silently fallback to default colors if CSS variables not available
 			}
 
 			ctx.fillStyle = `hsl(${placeholderBgHsl})`;
@@ -832,41 +828,42 @@ export default function AnnotationCanvas() {
 			const newX = pos.x - dragOffset.x;
 			const newY = pos.y - dragOffset.y;
 			annotationHistory.set((prevAnnotations) =>
-				prevAnnotations.map((anno) => {
+				prevAnnotations.map((anno): Annotation => {
 					if (anno.id === selectedAnnotationId) {
 						const deltaX = newX - anno.x;
 						const deltaY = newY - anno.y;
-						let updatedAnno = { ...anno, x: newX, y: newY };
 						if (anno.type === "arrow" || anno.type === "line") {
-							updatedAnno = {
-								...updatedAnno,
+							return {
+								...anno,
+								x: newX,
+								y: newY,
 								startX: anno.startX + deltaX,
 								startY: anno.startY + deltaY,
 								endX: anno.endX + deltaX,
 								endY: anno.endY + deltaY,
 							};
-						} else if (anno.type === "ellipse") {
-							updatedAnno = {
-								...updatedAnno,
+						}
+						if (anno.type === "ellipse") {
+							return {
+								...anno,
+								x: newX,
+								y: newY,
 								centerX: anno.centerX + deltaX,
 								centerY: anno.centerY + deltaY,
 							};
-						} else if (anno.type === "highlight") {
-							updatedAnno = {
-								...updatedAnno,
+						}
+						if (anno.type === "highlight") {
+							return {
+								...anno,
+								x: newX,
+								y: newY,
 								points: anno.points.map((p) => ({
 									x: p.x + deltaX,
 									y: p.y + deltaY,
 								})),
 							};
-						} else if (anno.type === "text") {
-							updatedAnno = {
-								...updatedAnno,
-								x: newX,
-								y: newY,
-							};
 						}
-						return updatedAnno;
+						return { ...anno, x: newX, y: newY };
 					}
 					return anno;
 				}),

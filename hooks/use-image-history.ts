@@ -3,6 +3,7 @@
 import type { Annotation } from "@/lib/annotations";
 import { deleteBlob, getBlob, storeBlob } from "@/lib/idb-helper";
 import { createThumbnail } from "@/lib/image-utils";
+import { isEqual } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
 
 const MAX_HISTORY_ITEMS = 100;
@@ -216,19 +217,14 @@ export const useImageHistory = () => {
 				? currentLogSnapshot.findIndex((e) => e.id === existingEntryId)
 				: -1;
 
-			// --- START OF ADDED CODE ---
 			// If this is an annotation-only update, check if the annotations have actually changed.
 			if (isAnnotationOnlyUpdate && existingEntryIndex !== -1) {
 				const oldEntry = currentLogSnapshot[existingEntryIndex];
-				// By comparing stringified versions, we do a deep-ish check.
-				if (
-					JSON.stringify(oldEntry.annotations) === JSON.stringify(annotations)
-				) {
-					// console.log("Annotations are identical, skipping save.");
+				// Use efficient equality check instead of JSON.stringify
+				if (isEqual(oldEntry.annotations, annotations)) {
 					return oldEntry; // Abort the save and return the existing data.
 				}
 			}
-			// --- END OF ADDED CODE ---
 
 			if (!isAnnotationOnlyUpdate) {
 				setIsLoading(true); // Only set global loading for new/replacement image operations

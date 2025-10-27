@@ -1,50 +1,50 @@
 "use client";
 
-import React from "react";
-import {
-	PREDEFINED_OPAQUE_COLORS,
-	DEFAULT_FILL_ALPHA,
-	DEFAULT_HIGHLIGHT_ALPHA,
-	hexToRgba,
-	rgbaToHex,
-	Tool,
-} from "@/lib/annotations";
-import { Slider } from "@/components/ui/slider";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Separator } from "@/components/ui/separator";
-import { Type, Heading, Code } from "lucide-react";
+import {
+	DEFAULT_FILL_ALPHA,
+	DEFAULT_HIGHLIGHT_ALPHA,
+	PREDEFINED_OPAQUE_COLORS,
+	type Tool,
+	hexToRgba,
+	rgbaToHex,
+} from "@/lib/annotations";
+import { Code, Heading, Type } from "lucide-react";
+import type React from "react";
 
 export interface ToolSettingsProps {
-	activeToolType: Tool | undefined;
-	strokeColor: string;
-	setStrokeColor: (val: string) => void;
-	strokeWidth: number;
-	setStrokeWidth: (val: number) => void;
-	useFill: boolean;
-	setUseFill: (val: boolean) => void;
-	fillColor: string;
-	setFillColor: (val: string) => void;
-	fontSize: number;
-	setFontSize: (val: number) => void;
-	fontFamily: string;
-	setFontFamily: (val: string) => void;
-	spotlightDarkness: number;
-	setSpotlightDarkness: (val: number) => void;
-	pixelSize: number;
-	setPixelSize: (val: number) => void;
-	highlightColor: string;
-	setHighlightColor: (val: string) => void;
-	highlightStrokeWidth: number;
-	setHighlightStrokeWidth: (val: number) => void;
-	handleSettingChange: <K extends keyof any, V>(prop: K, val: V) => void;
-}
+		activeToolType: Tool | undefined;
+		strokeColor: string;
+		setStrokeColor: (val: string) => void;
+		strokeWidth: number;
+		setStrokeWidth: (val: number) => void;
+		useFill: boolean;
+		setUseFill: (val: boolean) => void;
+		fillColor: string;
+		setFillColor: (val: string) => void;
+		fontSize: number;
+		setFontSize: (val: number) => void;
+		fontFamily: string;
+		setFontFamily: (val: string) => void;
+		spotlightDarkness: number;
+		setSpotlightDarkness: (val: number) => void;
+		pixelSize: number;
+		setPixelSize: (val: number) => void;
+		highlightColor: string;
+		setHighlightColor: (val: string) => void;
+		highlightStrokeWidth: number;
+		setHighlightStrokeWidth: (val: number) => void;
+		handleSettingChange: (prop: string, val: unknown) => void;
+	}
 
 export default function ToolSettings({
 	activeToolType,
@@ -107,11 +107,8 @@ export default function ToolSettings({
 								key={hex}
 								type="button"
 								className={`w-5 h-5 rounded-sm border hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 ${
-									{
-										true: colorType === "opaque" && currentColor === hex,
-										false:
-											colorType !== "opaque" && rgbaToHex(currentColor) === hex,
-									}[true]
+									(colorType === "opaque" && currentColor === hex) ||
+									(colorType !== "opaque" && rgbaToHex(currentColor) === hex)
 										? "ring-2 ring-offset-1 ring-primary"
 										: "border-muted-foreground/50"
 								}`}
@@ -263,7 +260,11 @@ export default function ToolSettings({
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<Button
-											variant={fontFamily === "Arial, sans-serif" ? "default" : "outline"}
+											variant={
+												fontFamily === "Arial, sans-serif"
+													? "default"
+													: "outline"
+											}
 											size="sm"
 											className="h-8 w-8 p-0"
 											onClick={() => {
@@ -280,7 +281,9 @@ export default function ToolSettings({
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<Button
-											variant={fontFamily === "Georgia, serif" ? "default" : "outline"}
+											variant={
+												fontFamily === "Georgia, serif" ? "default" : "outline"
+											}
 											size="sm"
 											className="h-8 w-8 p-0"
 											onClick={() => {
@@ -297,7 +300,11 @@ export default function ToolSettings({
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<Button
-											variant={fontFamily === "Monaco, monospace" ? "default" : "outline"}
+											variant={
+												fontFamily === "Monaco, monospace"
+													? "default"
+													: "outline"
+											}
 											size="sm"
 											className="h-8 w-8 p-0"
 											onClick={() => {
