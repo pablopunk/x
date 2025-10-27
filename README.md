@@ -8,9 +8,7 @@
   <i><b>X</b>. Free image annotation tool.</i>
 </p>
 
-<p align="center">
-  <img src="https://github.com/pablopunk/x/blob/main/public/screenshot.webp?raw=true" alt="screenshot" width="80%" />
-</p>
+<img src="https://github.com/pablopunk/x/blob/main/public/screenshot.webp?raw=true" alt="screenshot" width="100%" />
 
 ## Features
 
