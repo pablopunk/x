@@ -11,6 +11,7 @@ import {
 	EyeOff,
 	GripVertical,
 	Highlighter,
+	ImageIcon,
 	Minus,
 	Square,
 	Trash2,
@@ -59,6 +60,8 @@ const getAnnotationIcon = (annotation: Annotation) => {
 			return <Square className="h-4 w-4" />;
 		case "pixelate-area":
 			return <Square className="h-4 w-4" />;
+		case "image":
+			return <ImageIcon className="h-4 w-4" />;
 		default:
 			return <Square className="h-4 w-4" />;
 	}
@@ -86,6 +89,8 @@ const getAnnotationLabel = (annotation: Annotation): string => {
 			return "Spotlight";
 		case "pixelate-area":
 			return "Pixelate";
+		case "image":
+			return "Image";
 		default: {
 			// This should never happen as all cases are covered
 			const exhaustiveCheck: never = annotation;

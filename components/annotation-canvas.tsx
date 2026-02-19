@@ -27,6 +27,7 @@ import {
 	DEFAULT_STROKE_COLOR,
 	type EllipseAnnotation,
 	type HighlightAnnotation,
+	type ImageAnnotation,
 	type LineAnnotation,
 	type PixelateAreaAnnotation,
 	type Point,
@@ -107,6 +108,11 @@ export default function AnnotationCanvas() {
 	>(null);
 	const [isDraggingAnnotation, setIsDraggingAnnotation] = useState(false);
 	const [dragOffset, setDragOffset] = useState<Point | null>(null);
+	const [isDraggingOver, setIsDraggingOver] = useState(false);
+	const [dropZone, setDropZone] = useState<"replace" | "add-layer" | null>(
+		null,
+	);
+	const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
 	const textInputFieldRef = useRef<HTMLInputElement>(null);
 	const textCardRef = useRef<HTMLDivElement>(null);
 	const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -417,6 +423,23 @@ export default function AnnotationCanvas() {
 					}
 					ctx.stroke();
 				}
+			} else if (anno.type === "image") {
+				const imgAnno = anno as ImageAnnotation;
+				let img = imageCacheRef.current.get(imgAnno.imageSrc);
+				if (!img) {
+					img = new window.Image();
+					img.src = imgAnno.imageSrc;
+					imageCacheRef.current.set(imgAnno.imageSrc, img);
+				}
+				if (img.complete) {
+					ctx.drawImage(
+						img,
+						imgAnno.x,
+						imgAnno.y,
+						imgAnno.width,
+						imgAnno.height,
+					);
+				}
 			}
 			if (selectedAnnotationId === anno.id && currentTool === "cursor") {
 				ctx.strokeStyle = "rgba(0, 100, 255, 0.7)";
@@ -682,16 +705,92 @@ export default function AnnotationCanvas() {
 			handleImageUpload(e.target.files[0]);
 		}
 	};
-	const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+
+	const handleImageAsLayer = async (file: File) => {
+		return new Promise<HTMLImageElement>((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = (event) => {
+				const img = new window.Image();
+				img.onload = () => resolve(img);
+				img.onerror = reject;
+				img.src = event.target?.result as string;
+			};
+			reader.onerror = reject;
+			reader.readAsDataURL(file);
+		});
+	};
+
+	const handleDrop = (
+		e: React.DragEvent<HTMLDivElement>,
+		zone?: "replace" | "add-layer",
+	) => {
 		e.preventDefault();
 		e.stopPropagation();
+		setIsDraggingOver(false);
+		setDropZone(null);
+
 		if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-			handleImageUpload(e.dataTransfer.files[0]);
+			const file = e.dataTransfer.files[0];
+			if (!file.type.startsWith("image/")) return;
+
+			if (mainImage && zone === "add-layer") {
+				handleImageAsLayer(file).then((img) => {
+					const canvas = canvasRef.current;
+					if (!canvas) return;
+
+					const maxSize = 200;
+					let width = img.width;
+					let height = img.height;
+					if (width > maxSize || height > maxSize) {
+						const ratio = Math.min(maxSize / width, maxSize / height);
+						width = width * ratio;
+						height = height * ratio;
+					}
+
+					const newImageAnnotation: ImageAnnotation = {
+						id: Date.now().toString(),
+						type: "image",
+						x: (canvas.width - width) / 2,
+						y: (canvas.height - height) / 2,
+						width,
+						height,
+						imageSrc: img.src,
+						originalWidth: img.width,
+						originalHeight: img.height,
+					};
+					annotationHistory.set((prev) => [...prev, newImageAnnotation]);
+					toast({
+						title: "Image added as layer",
+						description: "You can now move and resize the image layer.",
+					});
+				});
+			} else {
+				handleImageUpload(file);
+			}
 		}
 	};
+
 	const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
 		e.preventDefault();
 		e.stopPropagation();
+
+		if (!mainImage) return;
+
+		const rect = canvasContainerRef.current?.getBoundingClientRect();
+		if (!rect) return;
+
+		const x = e.clientX - rect.left;
+		const isLeftHalf = x < rect.width / 2;
+
+		setIsDraggingOver(true);
+		setDropZone(isLeftHalf ? "replace" : "add-layer");
+	};
+
+	const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+		e.preventDefault();
+		e.stopPropagation();
+		setIsDraggingOver(false);
+		setDropZone(null);
 	};
 
 	// Add clipboard paste functionality
@@ -1558,8 +1657,9 @@ export default function AnnotationCanvas() {
 				<div
 					ref={canvasContainerRef}
 					className={`relative flex-grow bg-muted flex items-center justify-center overflow-hidden ${currentTool === "cursor" ? "cursor-default" : currentTool === "text" ? "text-cursor" : "cursor-crosshair"}`}
-					onDrop={handleDrop}
+					onDrop={(e) => handleDrop(e, dropZone ?? undefined)}
 					onDragOver={handleDragOver}
+					onDragLeave={handleDragLeave}
 					onClick={(e) => {
 						if (
 							!mainImage &&
@@ -1667,6 +1767,48 @@ export default function AnnotationCanvas() {
 								</CardContent>
 							</Card>
 						</div>
+					)}
+					{isDraggingOver && mainImage && (
+						<>
+							<div
+								className={`absolute inset-0 flex flex-col items-center justify-center transition-colors ${
+									dropZone === "replace"
+										? "bg-blue-500/30"
+										: "bg-muted/80 hover:bg-blue-500/20"
+								}`}
+								style={{ right: "50%" }}
+							>
+								<Card className="w-48 h-32 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-blue-500 bg-blue-500/10">
+									<CardContent className="flex flex-col items-center justify-center p-4">
+										<p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+											Upload new image
+										</p>
+										<p className="text-xs text-muted-foreground text-center">
+											This will open the new image
+										</p>
+									</CardContent>
+								</Card>
+							</div>
+							<div
+								className={`absolute inset-0 flex flex-col items-center justify-center transition-colors ${
+									dropZone === "add-layer"
+										? "bg-green-500/30"
+										: "bg-muted/80 hover:bg-green-500/20"
+								}`}
+								style={{ left: "50%" }}
+							>
+								<Card className="w-48 h-32 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-green-500 bg-green-500/10">
+									<CardContent className="flex flex-col items-center justify-center p-4">
+										<p className="text-sm font-medium text-green-600 dark:text-green-400">
+											Drop as layer
+										</p>
+										<p className="text-xs text-muted-foreground text-center">
+											Add image on top of current
+										</p>
+									</CardContent>
+								</Card>
+							</div>
+						</>
 					)}
 				</div>
 				<input

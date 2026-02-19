@@ -11,7 +11,8 @@ export type Tool =
 	| "ellipse"
 	| "line"
 	| "highlight"
-	| "crop";
+	| "crop"
+	| "image";
 
 export interface Point {
 	x: number;
@@ -90,6 +91,13 @@ export interface HighlightAnnotation extends BaseAnnotation {
 	points: Point[];
 }
 
+export interface ImageAnnotation extends BaseAnnotation {
+	type: "image";
+	imageSrc: string; // base64 or object URL
+	originalWidth: number;
+	originalHeight: number;
+}
+
 export type Annotation =
 	| RectangleAnnotation
 	| SpotlightAreaAnnotation
@@ -98,7 +106,8 @@ export type Annotation =
 	| ArrowAnnotation
 	| EllipseAnnotation
 	| LineAnnotation
-	| HighlightAnnotation;
+	| HighlightAnnotation
+	| ImageAnnotation;
 
 export const DEFAULT_STROKE_COLOR = "#FCA5A5"; // Pastel Red
 export const DEFAULT_FILL_ALPHA = 0.3;
