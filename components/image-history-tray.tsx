@@ -1,7 +1,5 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { X, Layers, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -11,6 +9,9 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { ImageHistoryEntryMetadata } from "@/hooks/use-image-history";
+import { ChevronLeft, ChevronRight, Layers, Trash2, X } from "lucide-react";
+import { motion } from "motion/react";
+import { useEffect, useMemo, useState } from "react";
 
 interface ImageHistoryTrayProps {
 	historyLog: ImageHistoryEntryMetadata[];
@@ -238,26 +239,29 @@ export default function ImageHistoryTray({
 									(index - (totalItemsInCurrentFanView - 1) / 2) *
 									FAN_ROTATE_DEG *
 									(2 / Math.max(1, totalItemsInCurrentFanView - 1));
-								const transform = isExpanded
-									? `translateX(${index * FAN_SPREAD_X}px) rotate(${rotation}deg)`
-									: `translateX(0px) rotate(0deg) scale(0.5)`;
-								const transitionDelay = isExpanded
-									? `${index * 0.03}s`
-									: `${(totalItemsInCurrentFanView - 1 - index) * 0.03}s`;
 								const isButtonVisible =
 									hoveredItemId === entry.id && isExpanded;
 
 								return (
-									<div
+									<motion.div
 										key={entry.id}
-										className="absolute bottom-0 left-0 transition-all duration-300 ease-out origin-bottom-left"
-										style={{
+										className="absolute bottom-0 left-0 origin-bottom-left"
+										initial={false}
+										animate={{
 											width: FAN_ITEM_WIDTH,
 											height: FAN_ITEM_HEIGHT,
 											zIndex: CARDS_Z_INDEX_BASE + index,
 											opacity: isExpanded ? 1 : 0,
-											transform: transform,
-											transitionDelay: transitionDelay,
+											rotate: isExpanded ? rotation : 0,
+											scale: isExpanded ? 1 : 0.5,
+											x: isExpanded ? index * FAN_SPREAD_X : 0,
+										}}
+										transition={{
+											duration: 0.3,
+											ease: "easeOut",
+											delay: isExpanded
+												? index * 0.03
+												: (totalItemsInCurrentFanView - 1 - index) * 0.03,
 										}}
 										onMouseEnter={() => setHoveredItemId(entry.id)}
 										onMouseLeave={() => setHoveredItemId(null)}
@@ -336,7 +340,7 @@ export default function ImageHistoryTray({
 												<p>Delete</p>
 											</TooltipContent>
 										</Tooltip>
-									</div>
+									</motion.div>
 								);
 							})}
 						</div>

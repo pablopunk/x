@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { Annotation, TextAnnotation } from "@/lib/annotations";
 import {
@@ -17,6 +17,7 @@ import {
 	Trash2,
 	Type,
 } from "lucide-react";
+import { motion, useMotionValue, useSpring } from "motion/react";
 import React, { useState, useCallback, useEffect, useRef, memo } from "react";
 
 // Constants
@@ -262,6 +263,12 @@ export default function LayersSidebar({
 	const positionRef = useRef<Position>({ x: 0, y: 0 });
 	const layerRefs = useRef<(HTMLDivElement | null)[]>([]);
 
+	// Motion spring values for smooth panel animation
+	const motionX = useMotionValue(0);
+	const motionY = useMotionValue(0);
+	const springX = useSpring(motionX, { stiffness: 300, damping: 30 });
+	const springY = useSpring(motionY, { stiffness: 300, damping: 30 });
+
 	// Keep ref in sync with state
 	useEffect(() => {
 		positionRef.current = position;
@@ -347,36 +354,15 @@ export default function LayersSidebar({
 		[getDropZonePosition],
 	);
 
-	// Reusable animation function
+	// Reusable animation function using motion springs
 	const animateToPosition = useCallback(
-		(targetX: number, targetY: number, duration: number) => {
-			const startX = positionRef.current.x;
-			const startY = positionRef.current.y;
-			const startTime = Date.now();
-
+		(targetX: number, targetY: number, _duration: number) => {
 			setIsSnapping(true);
-
-			const animate = () => {
-				const elapsed = Date.now() - startTime;
-				const progress = Math.min(elapsed / duration, 1);
-				// Ease out cubic for smooth deceleration
-				const easeProgress = 1 - (1 - progress) ** 3;
-
-				setPosition({
-					x: startX + (targetX - startX) * easeProgress,
-					y: startY + (targetY - startY) * easeProgress,
-				});
-
-				if (progress < 1) {
-					requestAnimationFrame(animate);
-				} else {
-					setIsSnapping(false);
-				}
-			};
-
-			requestAnimationFrame(animate);
+			motionX.set(targetX);
+			motionY.set(targetY);
+			setTimeout(() => setIsSnapping(false), 300);
 		},
-		[],
+		[motionX, motionY],
 	);
 
 	const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -587,11 +573,11 @@ export default function LayersSidebar({
 
 	return (
 		<>
-			<Card
-				className="fixed w-64 border shadow-lg z-50 rounded-2xl"
+			<motion.div
+				className="fixed w-64 border shadow-lg z-50 rounded-2xl bg-background"
 				style={{
-					left: `${position.x}px`,
-					top: `${position.y}px`,
+					x: springX,
+					y: springY,
 					maxHeight: "70vh",
 				}}
 				role="complementary"
@@ -642,7 +628,7 @@ export default function LayersSidebar({
 						</div>
 					</div>
 				</CardContent>
-			</Card>
+			</motion.div>
 		</>
 	);
 }

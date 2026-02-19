@@ -8,6 +8,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Moon, Sun } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
@@ -99,22 +100,12 @@ export const ThemeToggleButton = () => {
 	// Determine current theme for UI
 	const currentTheme = theme || resolvedTheme || manualTheme;
 
-	// Determine which icon to show (only Sun or Moon)
-	const renderIcon = () => {
-		if (currentTheme === "dark") {
-			return <Moon className="h-5 w-5" />;
-		} else {
-			return <Sun className="h-5 w-5" />;
-		}
-	};
-
 	// Determine tooltip text
 	const getTooltipText = () => {
 		if (currentTheme === "dark") {
 			return "Switch to light mode";
-		} else {
-			return "Switch to dark mode";
 		}
+		return "Switch to dark mode";
 	};
 
 	return (
@@ -127,7 +118,29 @@ export const ThemeToggleButton = () => {
 						onClick={handleToggleTheme}
 						className="h-9 w-9"
 					>
-						{renderIcon()}
+						<AnimatePresence mode="wait">
+							{currentTheme === "dark" ? (
+								<motion.div
+									key="moon"
+									initial={{ rotate: -90, opacity: 0 }}
+									animate={{ rotate: 0, opacity: 1 }}
+									exit={{ rotate: 90, opacity: 0 }}
+									transition={{ duration: 0.2 }}
+								>
+									<Moon className="h-5 w-5" />
+								</motion.div>
+							) : (
+								<motion.div
+									key="sun"
+									initial={{ rotate: 90, opacity: 0 }}
+									animate={{ rotate: 0, opacity: 1 }}
+									exit={{ rotate: -90, opacity: 0 }}
+									transition={{ duration: 0.2 }}
+								>
+									<Sun className="h-5 w-5" />
+								</motion.div>
+							)}
+						</AnimatePresence>
 						<span className="sr-only">{getTooltipText()}</span>
 					</Button>
 				</TooltipTrigger>
