@@ -269,6 +269,19 @@ export default function LayersSidebar({
 	const springX = useSpring(motionX, { stiffness: 300, damping: 30 });
 	const springY = useSpring(motionY, { stiffness: 300, damping: 30 });
 
+	const clampPositionToViewport = useCallback((pos: Position): Position => {
+		const panelHeight = window.innerHeight * PANEL_MAX_HEIGHT_VH;
+		const minX = PADDING;
+		const maxX = Math.max(PADDING, window.innerWidth - PANEL_WIDTH - PADDING);
+		const minY = PADDING + TOOLBAR_HEIGHT;
+		const maxY = Math.max(minY, window.innerHeight - panelHeight - PADDING);
+
+		return {
+			x: Math.min(Math.max(pos.x, minX), maxX),
+			y: Math.min(Math.max(pos.y, minY), maxY),
+		};
+	}, []);
+
 	// Keep ref in sync with state
 	useEffect(() => {
 		positionRef.current = position;
@@ -360,6 +373,7 @@ export default function LayersSidebar({
 			setIsSnapping(true);
 			motionX.set(targetX);
 			motionY.set(targetY);
+			setPosition({ x: targetX, y: targetY });
 			setTimeout(() => setIsSnapping(false), 300);
 		},
 		[motionX, motionY],
@@ -406,13 +420,16 @@ export default function LayersSidebar({
 	const handlePanelMouseMove = useCallback(
 		(e: MouseEvent) => {
 			if (isDraggingPanel) {
-				setPosition({
+				const nextPosition = {
 					x: e.clientX - dragStart.x,
 					y: e.clientY - dragStart.y,
-				});
+				};
+				setPosition(nextPosition);
+				motionX.set(nextPosition.x);
+				motionY.set(nextPosition.y);
 			}
 		},
-		[isDraggingPanel, dragStart],
+		[isDraggingPanel, dragStart, motionX, motionY],
 	);
 
 	const handlePanelMouseUp = useCallback(() => {
@@ -443,13 +460,18 @@ export default function LayersSidebar({
 				const savedPosition = localStorage.getItem(STORAGE_KEY);
 				if (savedPosition) {
 					const parsed = JSON.parse(savedPosition) as Position;
-					setPosition(parsed);
-					positionRef.current = parsed;
+					const clamped = clampPositionToViewport(parsed);
+					setPosition(clamped);
+					positionRef.current = clamped;
+					motionX.set(clamped.x);
+					motionY.set(clamped.y);
 				} else {
 					// Set default position to "right" drop zone
 					const rightPosition = getDropZonePosition("right");
 					setPosition(rightPosition);
 					positionRef.current = rightPosition;
+					motionX.set(rightPosition.x);
+					motionY.set(rightPosition.y);
 				}
 			} catch (error) {
 				console.error(
@@ -459,9 +481,11 @@ export default function LayersSidebar({
 				const rightPosition = getDropZonePosition("right");
 				setPosition(rightPosition);
 				positionRef.current = rightPosition;
+				motionX.set(rightPosition.x);
+				motionY.set(rightPosition.y);
 			}
 		}
-	}, [getDropZonePosition]);
+	}, [getDropZonePosition, clampPositionToViewport, motionX, motionY]);
 
 	// Save position to localStorage when it changes (debounced via snap completion)
 	useEffect(() => {
@@ -574,7 +598,7 @@ export default function LayersSidebar({
 	return (
 		<>
 			<motion.div
-				className="fixed w-64 border shadow-lg z-50 rounded-2xl bg-background"
+				className="fixed left-0 top-0 w-64 border shadow-lg z-50 rounded-2xl bg-background"
 				style={{
 					x: springX,
 					y: springY,
