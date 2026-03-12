@@ -1,5 +1,8 @@
 "use client";
 
+import ToolSettings, {
+	type ToolSettingsProps,
+} from "@/components/tool-settings";
 import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -21,7 +24,7 @@ import { motion, useMotionValue, useSpring } from "motion/react";
 import React, { useState, useCallback, useEffect, useRef, memo } from "react";
 
 // Constants
-const PANEL_WIDTH = 256; // w-64 = 256px
+const PANEL_WIDTH = 352; // w-[22rem] = 352px
 const PANEL_MAX_HEIGHT_VH = 0.7; // max-h-[70vh]
 const PADDING = 20;
 const TOOLBAR_HEIGHT = 80; // Approximate toolbar height
@@ -36,6 +39,7 @@ interface LayersSidebarProps {
 	onAnnotationDelete: (id: string) => void;
 	onAnnotationVisibilityToggle: (id: string) => void;
 	onAnnotationReorder: (fromIndex: number, toIndex: number) => void;
+	toolSettings: ToolSettingsProps;
 }
 
 interface Position {
@@ -119,6 +123,7 @@ const LayerItem = memo(
 			index: number;
 			isSelected: boolean;
 			isFocused: boolean;
+			expandedContent?: React.ReactNode;
 			draggedIndex: number | null;
 			dragOverIndex: number | null;
 			onDragStart: (e: React.DragEvent, index: number) => void;
@@ -138,6 +143,7 @@ const LayerItem = memo(
 				index,
 				isSelected,
 				isFocused,
+				expandedContent,
 				draggedIndex,
 				dragOverIndex,
 				onDragStart,
@@ -159,19 +165,14 @@ const LayerItem = memo(
 				<div
 					ref={ref}
 					key={annotation.id}
-					draggable
-					onDragStart={(e) => onDragStart(e, index)}
-					onDragOver={(e) => onDragOver(e, index)}
-					onDragLeave={onDragLeave}
-					onDrop={(e) => onDrop(e, index)}
-					onDragEnd={onDragEnd}
 					// biome-ignore lint/a11y/useSemanticElements: Div needed for drag-and-drop functionality
 					role="button"
 					tabIndex={isFocused ? 0 : -1}
 					aria-label={getAnnotationLabel(annotation)}
 					aria-selected={isSelected}
+					aria-expanded={isSelected && Boolean(expandedContent)}
 					onKeyDown={(e) => onKeyDown(e, index)}
-					className={`group flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+					className={`group rounded-lg border transition-colors ${
 						isSelected
 							? "bg-primary/10 border-primary/30"
 							: "hover:bg-muted/50 border-border"
@@ -180,55 +181,72 @@ const LayerItem = memo(
 					} ${draggedIndex === index ? "opacity-50" : ""} ${
 						isHidden ? "opacity-40" : ""
 					}`}
-					onClick={() => onSelect(isSelected ? null : annotation.id)}
 				>
-					<GripVertical className="h-4 w-4 text-muted-foreground/50 cursor-grab active:cursor-grabbing" />
-
 					<div
-						className="h-4 w-4 rounded-full border-2 flex-shrink-0"
-						style={{ backgroundColor: color, borderColor: color }}
-					/>
+						draggable
+						onDragStart={(e) => onDragStart(e, index)}
+						onDragOver={(e) => onDragOver(e, index)}
+						onDragLeave={onDragLeave}
+						onDrop={(e) => onDrop(e, index)}
+						onDragEnd={onDragEnd}
+						className="flex items-center gap-2 p-2 cursor-pointer"
+						onClick={() => onSelect(isSelected ? null : annotation.id)}
+					>
+						<GripVertical className="h-4 w-4 text-muted-foreground/50 cursor-grab active:cursor-grabbing" />
 
-					<div className="flex-1 min-w-0">
-						<div className="flex items-center gap-2">
-							{getAnnotationIcon(annotation)}
-							<span className="text-sm font-medium truncate">
-								{getAnnotationLabel(annotation)}
-							</span>
+						<div
+							className="h-4 w-4 rounded-full border-2 flex-shrink-0"
+							style={{ backgroundColor: color, borderColor: color }}
+						/>
+
+						<div className="flex-1 min-w-0">
+							<div className="flex items-center gap-2">
+								{getAnnotationIcon(annotation)}
+								<span className="text-sm font-medium truncate">
+									{getAnnotationLabel(annotation)}
+								</span>
+							</div>
+						</div>
+
+						<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+							<Button
+								variant="ghost"
+								size="sm"
+								className="h-8 w-8 p-0"
+								aria-label={isHidden ? "Show layer" : "Hide layer"}
+								onClick={(e) => {
+									e.stopPropagation();
+									onVisibilityToggle(annotation.id);
+								}}
+							>
+								{isHidden ? (
+									<EyeOff className="h-4 w-4" />
+								) : (
+									<Eye className="h-4 w-4" />
+								)}
+							</Button>
+
+							<Button
+								variant="ghost"
+								size="sm"
+								className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+								aria-label="Delete layer"
+								onClick={(e) => {
+									e.stopPropagation();
+									onDelete(annotation.id);
+								}}
+							>
+								<Trash2 className="h-4 w-4" />
+							</Button>
 						</div>
 					</div>
-
-					<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-						<Button
-							variant="ghost"
-							size="sm"
-							className="h-8 w-8 p-0"
-							aria-label={isHidden ? "Show layer" : "Hide layer"}
-							onClick={(e) => {
-								e.stopPropagation();
-								onVisibilityToggle(annotation.id);
-							}}
-						>
-							{isHidden ? (
-								<EyeOff className="h-4 w-4" />
-							) : (
-								<Eye className="h-4 w-4" />
-							)}
-						</Button>
-
-						<Button
-							variant="ghost"
-							size="sm"
-							className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-							aria-label="Delete layer"
-							onClick={(e) => {
-								e.stopPropagation();
-								onDelete(annotation.id);
-							}}
-						>
-							<Trash2 className="h-4 w-4" />
-						</Button>
-					</div>
+					{isSelected && expandedContent && (
+						<div className="px-2 pb-2" onClick={(e) => e.stopPropagation()}>
+							<div className="pt-2 border-t border-border/70 flex items-center gap-2 flex-wrap">
+								{expandedContent}
+							</div>
+						</div>
+					)}
 				</div>
 			);
 		},
@@ -252,6 +270,7 @@ export default function LayersSidebar({
 	onAnnotationDelete,
 	onAnnotationVisibilityToggle,
 	onAnnotationReorder,
+	toolSettings,
 }: LayersSidebarProps) {
 	const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 	const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -591,6 +610,17 @@ export default function LayersSidebar({
 		],
 	);
 
+	const hasToolSettings = [
+		"rectangle",
+		"ellipse",
+		"arrow",
+		"line",
+		"text",
+		"highlight",
+		"spotlight-area",
+		"pixelate-area",
+	].includes(toolSettings.activeToolType || "");
+
 	if (annotations.length === 0) {
 		return null;
 	}
@@ -598,7 +628,7 @@ export default function LayersSidebar({
 	return (
 		<>
 			<motion.div
-				className="fixed left-0 top-0 w-64 border shadow-lg z-50 rounded-2xl bg-background"
+				className="fixed left-0 top-0 w-[22rem] border shadow-lg z-50 rounded-2xl bg-background"
 				style={{
 					x: springX,
 					y: springY,
@@ -616,38 +646,51 @@ export default function LayersSidebar({
 				<Separator />
 				<CardContent className="p-0">
 					<div className="max-h-[60vh] overflow-y-auto">
-						<div className="p-4 space-y-2">
+						<div className="p-3 space-y-2">
 							{annotations.length === 0 ? (
-								<p className="text-sm text-muted-foreground text-center py-8">
+								<p className="text-sm text-muted-foreground text-center py-4">
 									No layers yet. Start annotating!
 								</p>
 							) : (
 								annotations
 									.slice()
 									.reverse()
-									.map((annotation, index) => (
-										<LayerItem
-											key={annotation.id}
-											ref={(el) => {
-												layerRefs.current[index] = el;
-											}}
-											annotation={annotation}
-											index={index}
-											isSelected={selectedAnnotation === annotation.id}
-											isFocused={focusedIndex === index}
-											draggedIndex={draggedIndex}
-											dragOverIndex={dragOverIndex}
-											onDragStart={handleDragStart}
-											onDragOver={handleDragOver}
-											onDragLeave={handleDragLeave}
-											onDrop={handleDrop}
-											onDragEnd={handleDragEnd}
-											onSelect={onAnnotationSelect}
-											onVisibilityToggle={onAnnotationVisibilityToggle}
-											onDelete={handleDeleteClick}
-											onKeyDown={handleLayerKeyDown}
-										/>
-									))
+									.map((annotation, index) => {
+										const isSelected = selectedAnnotation === annotation.id;
+										const showExpandedSettings =
+											isSelected &&
+											hasToolSettings &&
+											toolSettings.activeToolType === annotation.type;
+
+										return (
+											<LayerItem
+												key={annotation.id}
+												ref={(el) => {
+													layerRefs.current[index] = el;
+												}}
+												annotation={annotation}
+												index={index}
+												isSelected={isSelected}
+												isFocused={focusedIndex === index}
+												expandedContent={
+													showExpandedSettings ? (
+														<ToolSettings {...toolSettings} />
+													) : undefined
+												}
+												draggedIndex={draggedIndex}
+												dragOverIndex={dragOverIndex}
+												onDragStart={handleDragStart}
+												onDragOver={handleDragOver}
+												onDragLeave={handleDragLeave}
+												onDrop={handleDrop}
+												onDragEnd={handleDragEnd}
+												onSelect={onAnnotationSelect}
+												onVisibilityToggle={onAnnotationVisibilityToggle}
+												onDelete={handleDeleteClick}
+												onKeyDown={handleLayerKeyDown}
+											/>
+										);
+									})
 							)}
 						</div>
 					</div>

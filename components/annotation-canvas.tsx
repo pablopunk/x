@@ -3,7 +3,6 @@
 import ImageHistoryTray from "@/components/image-history-tray";
 import LayersSidebar from "@/components/layers-sidebar";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
-import ToolSettings from "@/components/tool-settings";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -60,6 +59,179 @@ import Image from "next/image";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+const RESIZE_HANDLE_SIZE = 10;
+const RESIZE_HANDLE_HIT_RADIUS = 12;
+const MIN_IMAGE_LAYER_SIZE = 24;
+
+type ResizeHandle = "nw" | "ne" | "sw" | "se";
+
+type CornerResizableAnnotation =
+	| EllipseAnnotation
+	| ImageAnnotation
+	| PixelateAreaAnnotation
+	| RectangleAnnotation
+	| SpotlightAreaAnnotation
+	| TextAnnotation;
+
+interface ResizeState {
+	handle: ResizeHandle;
+	anchor: Point;
+	aspectRatio: number;
+}
+
+function isCornerResizableAnnotation(
+	annotation: Annotation,
+): annotation is CornerResizableAnnotation {
+	return (
+		annotation.type === "image" ||
+		annotation.type === "pixelate-area" ||
+		annotation.type === "spotlight-area" ||
+		annotation.type === "text" ||
+		annotation.type === "ellipse" ||
+		annotation.type === "rectangle"
+	);
+}
+
+function getResizeHandlePosition(
+	annotation: CornerResizableAnnotation,
+	handle: ResizeHandle,
+): Point {
+	switch (handle) {
+		case "nw":
+			return { x: annotation.x, y: annotation.y };
+		case "ne":
+			return { x: annotation.x + annotation.width, y: annotation.y };
+		case "sw":
+			return { x: annotation.x, y: annotation.y + annotation.height };
+		case "se":
+			return {
+				x: annotation.x + annotation.width,
+				y: annotation.y + annotation.height,
+			};
+	}
+}
+
+function getResizeAnchorPoint(
+	annotation: CornerResizableAnnotation,
+	handle: ResizeHandle,
+): Point {
+	switch (handle) {
+		case "nw":
+			return {
+				x: annotation.x + annotation.width,
+				y: annotation.y + annotation.height,
+			};
+		case "ne":
+			return { x: annotation.x, y: annotation.y + annotation.height };
+		case "sw":
+			return { x: annotation.x + annotation.width, y: annotation.y };
+		case "se":
+			return { x: annotation.x, y: annotation.y };
+	}
+}
+
+function getResizedImageBounds(
+	point: Point,
+	anchor: Point,
+	handle: ResizeHandle,
+	lockAspectRatio = false,
+	aspectRatio = 1,
+) {
+	const rawWidth = Math.max(MIN_IMAGE_LAYER_SIZE, Math.abs(point.x - anchor.x));
+	const rawHeight = Math.max(
+		MIN_IMAGE_LAYER_SIZE,
+		Math.abs(point.y - anchor.y),
+	);
+
+	let width = rawWidth;
+	let height = rawHeight;
+
+	if (lockAspectRatio) {
+		if (rawWidth / rawHeight > aspectRatio) {
+			height = Math.max(MIN_IMAGE_LAYER_SIZE, rawWidth / aspectRatio);
+			width = height * aspectRatio;
+		} else {
+			width = Math.max(MIN_IMAGE_LAYER_SIZE, rawHeight * aspectRatio);
+			height = width / aspectRatio;
+		}
+	}
+
+	switch (handle) {
+		case "nw": {
+			const x = anchor.x - width;
+			const y = anchor.y - height;
+			return {
+				x,
+				y,
+				width,
+				height,
+			};
+		}
+		case "ne": {
+			return {
+				x: anchor.x,
+				y: anchor.y - height,
+				width,
+				height,
+			};
+		}
+		case "sw": {
+			return {
+				x: anchor.x - width,
+				y: anchor.y,
+				width,
+				height,
+			};
+		}
+		case "se":
+			return {
+				x: anchor.x,
+				y: anchor.y,
+				width,
+				height,
+			};
+	}
+}
+
+function drawSelectionOverlay(
+	ctx: CanvasRenderingContext2D,
+	annotation: Annotation,
+) {
+	ctx.save();
+	ctx.strokeStyle = "rgba(0, 100, 255, 0.7)";
+	ctx.lineWidth = 2;
+	ctx.setLineDash([4, 4]);
+	const padding = 5;
+	ctx.strokeRect(
+		annotation.x - padding / 2,
+		annotation.y - padding / 2,
+		annotation.width + padding,
+		annotation.height + padding,
+	);
+	ctx.setLineDash([]);
+
+	if (isCornerResizableAnnotation(annotation)) {
+		const handles: ResizeHandle[] = ["nw", "ne", "sw", "se"];
+		ctx.fillStyle = "#ffffff";
+		ctx.strokeStyle = "rgba(0, 100, 255, 0.9)";
+		ctx.lineWidth = 2;
+		for (const handle of handles) {
+			const handlePoint = getResizeHandlePosition(annotation, handle);
+			ctx.beginPath();
+			ctx.rect(
+				handlePoint.x - RESIZE_HANDLE_SIZE / 2,
+				handlePoint.y - RESIZE_HANDLE_SIZE / 2,
+				RESIZE_HANDLE_SIZE,
+				RESIZE_HANDLE_SIZE,
+			);
+			ctx.fill();
+			ctx.stroke();
+		}
+	}
+
+	ctx.restore();
+}
+
 export default function AnnotationCanvas() {
 	const { theme, resolvedTheme } = useTheme();
 	const { toast } = useToast();
@@ -81,6 +253,7 @@ export default function AnnotationCanvas() {
 	} = useImageHistory();
 
 	const annotationHistory = useAnnotationHistory<Annotation[]>([]);
+	const gestureStartAnnotationsRef = useRef<Annotation[] | null>(null);
 	const [currentTool, setCurrentTool] = useState<Tool>("cursor");
 	const [isDrawing, setIsDrawing] = useState(false);
 	const [startPoint, setStartPoint] = useState<Point | null>(null);
@@ -108,6 +281,7 @@ export default function AnnotationCanvas() {
 	>(null);
 	const [isDraggingAnnotation, setIsDraggingAnnotation] = useState(false);
 	const [dragOffset, setDragOffset] = useState<Point | null>(null);
+	const [resizeState, setResizeState] = useState<ResizeState | null>(null);
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
 	const [dropZone, setDropZone] = useState<"replace" | "add-layer" | null>(
 		null,
@@ -277,7 +451,7 @@ export default function AnnotationCanvas() {
 			(a) => a.type !== "pixelate-area" && a.type !== "spotlight-area",
 		);
 
-		pixelateAreas.forEach((pixelate) => {
+		for (const pixelate of pixelateAreas) {
 			const tempWidth = Math.max(
 				1,
 				Math.ceil(pixelate.width / pixelate.pixelSize),
@@ -317,25 +491,25 @@ export default function AnnotationCanvas() {
 				);
 				ctx.restore();
 			}
-		});
+		}
 
 		if (spotlightAreas.length > 0) {
 			ctx.save();
 			ctx.fillStyle = `rgba(0, 0, 0, ${spotlightDarkness})`;
 			ctx.beginPath();
 			ctx.rect(0, 0, canvas.width, canvas.height);
-			spotlightAreas.forEach((spot) => {
+			for (const spot of spotlightAreas) {
 				ctx.moveTo(spot.x, spot.y);
 				ctx.lineTo(spot.x, spot.y + spot.height);
 				ctx.lineTo(spot.x + spot.width, spot.y + spot.height);
 				ctx.lineTo(spot.x + spot.width, spot.y);
 				ctx.closePath();
-			});
+			}
 			ctx.fill("evenodd");
 			ctx.restore();
 		}
 
-		shapeAnnotations.forEach((anno) => {
+		for (const anno of shapeAnnotations) {
 			ctx.save();
 			if (anno.type === "rectangle") {
 				const rect = anno as RectangleAnnotation;
@@ -441,21 +615,17 @@ export default function AnnotationCanvas() {
 					);
 				}
 			}
-			if (selectedAnnotationId === anno.id && currentTool === "cursor") {
-				ctx.strokeStyle = "rgba(0, 100, 255, 0.7)";
-				ctx.lineWidth = 2;
-				ctx.setLineDash([4, 4]);
-				const padding = 5;
-				ctx.strokeRect(
-					anno.x - padding / 2,
-					anno.y - padding / 2,
-					anno.width + padding,
-					anno.height + padding,
-				);
-				ctx.setLineDash([]);
-			}
 			ctx.restore();
-		});
+		}
+
+		if (selectedAnnotationId && currentTool === "cursor") {
+			const selectedVisibleAnnotation = visibleAnnotations.find(
+				(annotation) => annotation.id === selectedAnnotationId,
+			);
+			if (selectedVisibleAnnotation) {
+				drawSelectionOverlay(ctx, selectedVisibleAnnotation);
+			}
+		}
 
 		if (
 			isDrawing &&
@@ -572,9 +742,6 @@ export default function AnnotationCanvas() {
 		useFill,
 		strokeWidth,
 		spotlightDarkness,
-		pixelSize,
-		fontSize,
-		fontFamily,
 		highlightColor,
 		highlightStrokeWidth,
 		currentHighlightPoints,
@@ -617,12 +784,7 @@ export default function AnnotationCanvas() {
 				clearTimeout(debouncedSaveAnnotationsRef.current);
 			}
 		};
-	}, [
-		annotationHistory,
-		mainImage,
-		activeHistoryEntryId,
-		saveCurrentAnnotationsToHistory,
-	]);
+	}, [mainImage, activeHistoryEntryId, saveCurrentAnnotationsToHistory]);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -665,43 +827,52 @@ export default function AnnotationCanvas() {
 		};
 	}, [textInputPosition]);
 
-	const handleImageUpload = async (file: File) => {
-		setIsCanvasLoading(true);
-		try {
-			if (mainImage && activeHistoryEntryId) {
-				await addOrUpdateHistoryEntry(
-					null,
-					annotationHistory.state,
-					activeHistoryEntryId,
-				);
-			}
-			const newEntryMetadata = await addOrUpdateHistoryEntry(file, []);
-			if (newEntryMetadata) {
-				const loadedEntry =
-					await loadAndActivateEntryFromMetadata(newEntryMetadata);
-				if (loadedEntry) {
-					setMainImage(loadedEntry.image);
-					annotationHistory.reset(loadedEntry.annotations);
-					setSelectedAnnotationId(null);
-					const canvas = canvasRef.current;
-					if (canvas) {
-						canvas.width = loadedEntry.image.width;
-						canvas.height = loadedEntry.image.height;
-					}
-				} else {
-					setMainImage(null);
-					annotationHistory.reset([]);
+	const handleImageUpload = useCallback(
+		async (file: File) => {
+			setIsCanvasLoading(true);
+			try {
+				if (mainImage && activeHistoryEntryId) {
+					await addOrUpdateHistoryEntry(
+						null,
+						annotationHistory.state,
+						activeHistoryEntryId,
+					);
 				}
+				const newEntryMetadata = await addOrUpdateHistoryEntry(file, []);
+				if (newEntryMetadata) {
+					const loadedEntry =
+						await loadAndActivateEntryFromMetadata(newEntryMetadata);
+					if (loadedEntry) {
+						setMainImage(loadedEntry.image);
+						annotationHistory.reset(loadedEntry.annotations);
+						setSelectedAnnotationId(null);
+						const canvas = canvasRef.current;
+						if (canvas) {
+							canvas.width = loadedEntry.image.width;
+							canvas.height = loadedEntry.image.height;
+						}
+					} else {
+						setMainImage(null);
+						annotationHistory.reset([]);
+					}
+				}
+			} catch (error) {
+				console.error("Error during image upload process:", error);
+			} finally {
+				setIsCanvasLoading(false);
 			}
-		} catch (error) {
-			console.error("Error during image upload process:", error);
-		} finally {
-			setIsCanvasLoading(false);
-		}
-	};
+		},
+		[
+			mainImage,
+			activeHistoryEntryId,
+			addOrUpdateHistoryEntry,
+			annotationHistory,
+			loadAndActivateEntryFromMetadata,
+		],
+	);
 
 	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		if (e.target.files && e.target.files[0]) {
+		if (e.target.files?.[0]) {
 			handleImageUpload(e.target.files[0]);
 		}
 	};
@@ -724,12 +895,18 @@ export default function AnnotationCanvas() {
 		e: React.DragEvent<HTMLDivElement>,
 		zone?: "replace" | "add-layer",
 	) => {
+		if (window.localStorage.getItem("debugSlider") === "1") {
+			console.log("[dnd] drop", {
+				zone,
+				files: e.dataTransfer.files?.length ?? 0,
+			});
+		}
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(false);
 		setDropZone(null);
 
-		if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+		if (e.dataTransfer.files?.[0]) {
 			const file = e.dataTransfer.files[0];
 			if (!file.type.startsWith("image/")) return;
 
@@ -771,6 +948,13 @@ export default function AnnotationCanvas() {
 	};
 
 	const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+		if (window.localStorage.getItem("debugSlider") === "1") {
+			console.log("[dnd] dragover", {
+				types: Array.from(e.dataTransfer.types || []),
+				x: e.clientX,
+				y: e.clientY,
+			});
+		}
 		e.preventDefault();
 		e.stopPropagation();
 
@@ -787,6 +971,9 @@ export default function AnnotationCanvas() {
 	};
 
 	const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+		if (window.localStorage.getItem("debugSlider") === "1") {
+			console.log("[dnd] dragleave");
+		}
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(false);
@@ -864,6 +1051,26 @@ export default function AnnotationCanvas() {
 		);
 	};
 
+	const getResizeHandleAtPoint = useCallback(
+		(
+			point: Point,
+			annotation: CornerResizableAnnotation,
+		): ResizeHandle | null => {
+			const handles: ResizeHandle[] = ["nw", "ne", "sw", "se"];
+			for (const handle of handles) {
+				const handlePoint = getResizeHandlePosition(annotation, handle);
+				if (
+					Math.abs(point.x - handlePoint.x) <= RESIZE_HANDLE_HIT_RADIUS &&
+					Math.abs(point.y - handlePoint.y) <= RESIZE_HANDLE_HIT_RADIUS
+				) {
+					return handle;
+				}
+			}
+			return null;
+		},
+		[],
+	);
+
 	const handleMouseDown = (e: React.MouseEvent) => {
 		if (
 			!mainImage ||
@@ -872,6 +1079,29 @@ export default function AnnotationCanvas() {
 			return;
 		const pos = getMousePosition(e);
 		if (currentTool === "cursor") {
+			const selectedAnnotation = getSelectedAnnotation();
+			if (
+				selectedAnnotation &&
+				isCornerResizableAnnotation(selectedAnnotation)
+			) {
+				const resizeHandle = getResizeHandleAtPoint(pos, selectedAnnotation);
+				if (resizeHandle) {
+					gestureStartAnnotationsRef.current = annotationHistory.state;
+					setResizeState({
+						handle: resizeHandle,
+						anchor: getResizeAnchorPoint(selectedAnnotation, resizeHandle),
+						aspectRatio:
+							selectedAnnotation.width > 0 && selectedAnnotation.height > 0
+								? selectedAnnotation.width / selectedAnnotation.height
+								: 1,
+					});
+					setIsDraggingAnnotation(false);
+					setDragOffset(null);
+					setStartPoint(pos);
+					return;
+				}
+			}
+
 			let foundAnnotation: Annotation | null = null;
 			for (let i = annotationHistory.state.length - 1; i >= 0; i--) {
 				const anno = annotationHistory.state[i];
@@ -888,8 +1118,10 @@ export default function AnnotationCanvas() {
 				}
 			}
 			if (foundAnnotation) {
+				gestureStartAnnotationsRef.current = annotationHistory.state;
 				setSelectedAnnotationId(foundAnnotation.id);
 				setIsDraggingAnnotation(true);
+				setResizeState(null);
 				setDragOffset({
 					x: pos.x - foundAnnotation.x,
 					y: pos.y - foundAnnotation.y,
@@ -898,11 +1130,14 @@ export default function AnnotationCanvas() {
 			} else {
 				setSelectedAnnotationId(null);
 				setIsDraggingAnnotation(false);
+				setResizeState(null);
+				setDragOffset(null);
 			}
 			setIsDrawing(false);
 			return;
 		}
 		setSelectedAnnotationId(null);
+		setResizeState(null);
 		if (currentTool === "text") {
 			setTextInputPosition(pos);
 			setCurrentText("");
@@ -916,9 +1151,82 @@ export default function AnnotationCanvas() {
 	};
 
 	const handleMouseMove = (e: React.MouseEvent) => {
-		if (!mainImage || (!isDrawing && !isDraggingAnnotation)) return;
+		if (!mainImage || (!isDrawing && !isDraggingAnnotation && !resizeState))
+			return;
 		const pos = getMousePosition(e);
-		if (
+		if (resizeState && selectedAnnotationId) {
+			annotationHistory.set(
+				(prevAnnotations) =>
+					prevAnnotations.map((anno): Annotation => {
+						if (
+							anno.id !== selectedAnnotationId ||
+							!isCornerResizableAnnotation(anno)
+						) {
+							return anno;
+						}
+
+						const resizedBounds = getResizedImageBounds(
+							pos,
+							resizeState.anchor,
+							resizeState.handle,
+							e.shiftKey,
+							resizeState.aspectRatio,
+						);
+
+						if (anno.type === "ellipse") {
+							return {
+								...anno,
+								...resizedBounds,
+								centerX: resizedBounds.x + resizedBounds.width / 2,
+								centerY: resizedBounds.y + resizedBounds.height / 2,
+								radiusX: resizedBounds.width / 2,
+								radiusY: resizedBounds.height / 2,
+							};
+						}
+
+						if (anno.type === "text") {
+							const canvas = canvasRef.current;
+							const ctx = canvas?.getContext("2d");
+							const nextFontSize = Math.max(
+								8,
+								Math.round(resizedBounds.height),
+							);
+							let measuredWidth = resizedBounds.width;
+
+							if (ctx) {
+								ctx.save();
+								ctx.font = `${nextFontSize}px ${anno.fontFamily}`;
+								measuredWidth = Math.max(8, ctx.measureText(anno.text).width);
+								ctx.restore();
+							}
+
+							const x =
+								resizeState.handle === "nw" || resizeState.handle === "sw"
+									? resizeState.anchor.x - measuredWidth
+									: resizeState.anchor.x;
+							const y =
+								resizeState.handle === "nw" || resizeState.handle === "ne"
+									? resizeState.anchor.y - nextFontSize
+									: resizeState.anchor.y;
+
+							return {
+								...anno,
+								x,
+								y,
+								width: measuredWidth,
+								height: nextFontSize,
+								fontSize: nextFontSize,
+							};
+						}
+
+						return {
+							...anno,
+							...resizedBounds,
+						};
+					}),
+				{ record: false },
+			);
+		} else if (
 			isDraggingAnnotation &&
 			selectedAnnotationId &&
 			dragOffset &&
@@ -926,46 +1234,48 @@ export default function AnnotationCanvas() {
 		) {
 			const newX = pos.x - dragOffset.x;
 			const newY = pos.y - dragOffset.y;
-			annotationHistory.set((prevAnnotations) =>
-				prevAnnotations.map((anno): Annotation => {
-					if (anno.id === selectedAnnotationId) {
-						const deltaX = newX - anno.x;
-						const deltaY = newY - anno.y;
-						if (anno.type === "arrow" || anno.type === "line") {
-							return {
-								...anno,
-								x: newX,
-								y: newY,
-								startX: anno.startX + deltaX,
-								startY: anno.startY + deltaY,
-								endX: anno.endX + deltaX,
-								endY: anno.endY + deltaY,
-							};
+			annotationHistory.set(
+				(prevAnnotations) =>
+					prevAnnotations.map((anno): Annotation => {
+						if (anno.id === selectedAnnotationId) {
+							const deltaX = newX - anno.x;
+							const deltaY = newY - anno.y;
+							if (anno.type === "arrow" || anno.type === "line") {
+								return {
+									...anno,
+									x: newX,
+									y: newY,
+									startX: anno.startX + deltaX,
+									startY: anno.startY + deltaY,
+									endX: anno.endX + deltaX,
+									endY: anno.endY + deltaY,
+								};
+							}
+							if (anno.type === "ellipse") {
+								return {
+									...anno,
+									x: newX,
+									y: newY,
+									centerX: anno.centerX + deltaX,
+									centerY: anno.centerY + deltaY,
+								};
+							}
+							if (anno.type === "highlight") {
+								return {
+									...anno,
+									x: newX,
+									y: newY,
+									points: anno.points.map((p) => ({
+										x: p.x + deltaX,
+										y: p.y + deltaY,
+									})),
+								};
+							}
+							return { ...anno, x: newX, y: newY };
 						}
-						if (anno.type === "ellipse") {
-							return {
-								...anno,
-								x: newX,
-								y: newY,
-								centerX: anno.centerX + deltaX,
-								centerY: anno.centerY + deltaY,
-							};
-						}
-						if (anno.type === "highlight") {
-							return {
-								...anno,
-								x: newX,
-								y: newY,
-								points: anno.points.map((p) => ({
-									x: p.x + deltaX,
-									y: p.y + deltaY,
-								})),
-							};
-						}
-						return { ...anno, x: newX, y: newY };
-					}
-					return anno;
-				}),
+						return anno;
+					}),
+				{ record: false },
 			);
 		} else if (
 			isDrawing &&
@@ -981,8 +1291,29 @@ export default function AnnotationCanvas() {
 	};
 
 	const handleMouseUp = () => {
+		if (resizeState) {
+			if (gestureStartAnnotationsRef.current) {
+				annotationHistory.commit(
+					gestureStartAnnotationsRef.current,
+					annotationHistory.state,
+				);
+				gestureStartAnnotationsRef.current = null;
+			}
+			setResizeState(null);
+			setStartPoint(null);
+			setCurrentEndPoint(null);
+			return;
+		}
 		if (isDraggingAnnotation) {
+			if (gestureStartAnnotationsRef.current) {
+				annotationHistory.commit(
+					gestureStartAnnotationsRef.current,
+					annotationHistory.state,
+				);
+				gestureStartAnnotationsRef.current = null;
+			}
 			setIsDraggingAnnotation(false);
+			setDragOffset(null);
 			return;
 		}
 		if (currentTool === "cursor" || currentTool === "text") {
@@ -1081,7 +1412,7 @@ export default function AnnotationCanvas() {
 					height,
 				};
 				break;
-			case "ellipse":
+			case "ellipse": {
 				const radiusX = width / 2;
 				const radiusY = height / 2;
 				newAnnotation = {
@@ -1100,6 +1431,7 @@ export default function AnnotationCanvas() {
 					height,
 				};
 				break;
+			}
 			case "line":
 				newAnnotation = {
 					id: Date.now().toString(),
@@ -1181,14 +1513,14 @@ export default function AnnotationCanvas() {
 		setSelectedAnnotationId(null);
 	};
 
-	const handleDeleteSelectedAnnotation = () => {
+	const handleDeleteSelectedAnnotation = useCallback(() => {
 		if (selectedAnnotationId) {
 			annotationHistory.set((prev) =>
 				prev.filter((anno) => anno.id !== selectedAnnotationId),
 			);
 			setSelectedAnnotationId(null);
 		}
-	};
+	}, [selectedAnnotationId, annotationHistory]);
 
 	const handleLayerSelect = (id: string | null) => {
 		setSelectedAnnotationId(id);
@@ -1321,14 +1653,17 @@ export default function AnnotationCanvas() {
 		}
 	};
 
-	const switchTool = (tool: Tool) => {
-		setCurrentTool(tool);
-		if (tool !== "cursor") setSelectedAnnotationId(null);
-		if (textInputPosition && tool !== "text") {
-			setTextInputPosition(null);
-			setCurrentText("");
-		}
-	};
+	const switchTool = useCallback(
+		(tool: Tool) => {
+			setCurrentTool(tool);
+			if (tool !== "cursor") setSelectedAnnotationId(null);
+			if (textInputPosition && tool !== "text") {
+				setTextInputPosition(null);
+				setCurrentText("");
+			}
+		},
+		[textInputPosition],
+	);
 
 	const toolList: {
 		name: Tool;
@@ -1422,7 +1757,9 @@ export default function AnnotationCanvas() {
 
 			switch (e.key.toLowerCase()) {
 				case "v":
-					switchTool("cursor");
+					if (!(e.metaKey || e.ctrlKey)) {
+						switchTool("cursor");
+					}
 					break;
 				case "b":
 					switchTool("highlight");
@@ -1457,12 +1794,6 @@ export default function AnnotationCanvas() {
 						annotationHistory.undo();
 					}
 					break;
-				case "v":
-					if (e.metaKey || e.ctrlKey) {
-						// Let the paste event handler handle this
-						// Don't prevent default here as we want the paste event to fire
-					}
-					break;
 				case "backspace":
 				case "delete":
 					if (selectedAnnotationId && currentTool === "cursor") {
@@ -1474,7 +1805,13 @@ export default function AnnotationCanvas() {
 
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [annotationHistory, selectedAnnotationId, currentTool]);
+	}, [
+		annotationHistory,
+		selectedAnnotationId,
+		currentTool,
+		handleDeleteSelectedAnnotation,
+		switchTool,
+	]);
 
 	const selectedAnno = getSelectedAnnotation();
 	const activeToolType: Tool =
@@ -1579,32 +1916,7 @@ export default function AnnotationCanvas() {
 						<TooltipContent>Delete Selected Annotation</TooltipContent>
 					</Tooltip>
 					<Separator orientation="vertical" className="h-8 mx-2" />
-					<div className="flex items-center gap-2 flex-wrap mr-auto">
-						<ToolSettings
-							activeToolType={activeToolType}
-							strokeColor={strokeColor}
-							setStrokeColor={setStrokeColor}
-							strokeWidth={strokeWidth}
-							setStrokeWidth={setStrokeWidth}
-							useFill={useFill}
-							setUseFill={setUseFill}
-							fillColor={fillColor}
-							setFillColor={setFillColor}
-							fontSize={fontSize}
-							setFontSize={setFontSize}
-							fontFamily={fontFamily}
-							setFontFamily={setFontFamily}
-							spotlightDarkness={spotlightDarkness}
-							setSpotlightDarkness={setSpotlightDarkness}
-							pixelSize={pixelSize}
-							setPixelSize={setPixelSize}
-							highlightColor={highlightColor}
-							setHighlightColor={setHighlightColor}
-							highlightStrokeWidth={highlightStrokeWidth}
-							setHighlightStrokeWidth={setHighlightStrokeWidth}
-							handleSettingChange={handleSettingChange}
-						/>
-					</div>
+					<div className="mr-auto" />
 					<div className="flex items-center gap-1">
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -1660,6 +1972,17 @@ export default function AnnotationCanvas() {
 					onDrop={(e) => handleDrop(e, dropZone ?? undefined)}
 					onDragOver={handleDragOver}
 					onDragLeave={handleDragLeave}
+					onKeyDown={(e) => {
+						if (
+							(e.key === "Enter" || e.key === " ") &&
+							!mainImage &&
+							fileInputRef.current &&
+							!(isCanvasLoading || isLoadingHistory)
+						) {
+							e.preventDefault();
+							fileInputRef.current.click();
+						}
+					}}
 					onClick={(e) => {
 						if (
 							!mainImage &&
@@ -1835,6 +2158,30 @@ export default function AnnotationCanvas() {
 				onAnnotationDelete={handleLayerDelete}
 				onAnnotationVisibilityToggle={handleLayerVisibilityToggle}
 				onAnnotationReorder={handleLayerReorder}
+				toolSettings={{
+					activeToolType,
+					strokeColor,
+					setStrokeColor,
+					strokeWidth,
+					setStrokeWidth,
+					useFill,
+					setUseFill,
+					fillColor,
+					setFillColor,
+					fontSize,
+					setFontSize,
+					fontFamily,
+					setFontFamily,
+					spotlightDarkness,
+					setSpotlightDarkness,
+					pixelSize,
+					setPixelSize,
+					highlightColor,
+					setHighlightColor,
+					highlightStrokeWidth,
+					setHighlightStrokeWidth,
+					handleSettingChange,
+				}}
 			/>
 		</TooltipProvider>
 	);

@@ -9,6 +9,10 @@ interface HistoryState<T> {
 	future: T[];
 }
 
+interface SetOptions {
+	record?: boolean;
+}
+
 export const useHistory = <T>(initialPresent: T) => {
 	const [history, setHistory] = useState<HistoryState<T>>({
 		past: [],
@@ -19,20 +23,44 @@ export const useHistory = <T>(initialPresent: T) => {
 	const canUndo = history.past.length > 0;
 	const canRedo = history.future.length > 0;
 
-	const set = useCallback((newState: T | ((prevState: T) => T)) => {
-		setHistory((currentHistory) => {
-			const newPresent =
-				typeof newState === "function"
-					? (newState as (prevState: T) => T)(currentHistory.present)
-					: newState;
+	const set = useCallback(
+		(newState: T | ((prevState: T) => T), options: SetOptions = {}) => {
+			setHistory((currentHistory) => {
+				const newPresent =
+					typeof newState === "function"
+						? (newState as (prevState: T) => T)(currentHistory.present)
+						: newState;
 
-			if (isEqual(newPresent, currentHistory.present)) {
+				if (isEqual(newPresent, currentHistory.present)) {
+					return currentHistory;
+				}
+
+				if (options.record === false) {
+					return {
+						...currentHistory,
+						present: newPresent,
+					};
+				}
+
+				return {
+					past: [...currentHistory.past, currentHistory.present],
+					present: newPresent,
+					future: [],
+				};
+			});
+		},
+		[],
+	);
+
+	const commit = useCallback((previousState: T, newState: T) => {
+		setHistory((currentHistory) => {
+			if (isEqual(previousState, newState)) {
 				return currentHistory;
 			}
 
 			return {
-				past: [...currentHistory.past, currentHistory.present],
-				present: newPresent,
+				past: [...currentHistory.past, previousState],
+				present: newState,
 				future: [],
 			};
 		});
@@ -82,6 +110,7 @@ export const useHistory = <T>(initialPresent: T) => {
 	return {
 		state: history.present,
 		set,
+		commit,
 		undo,
 		redo,
 		reset,

@@ -22,29 +22,29 @@ import { Code, Heading, Type } from "lucide-react";
 import type React from "react";
 
 export interface ToolSettingsProps {
-		activeToolType: Tool | undefined;
-		strokeColor: string;
-		setStrokeColor: (val: string) => void;
-		strokeWidth: number;
-		setStrokeWidth: (val: number) => void;
-		useFill: boolean;
-		setUseFill: (val: boolean) => void;
-		fillColor: string;
-		setFillColor: (val: string) => void;
-		fontSize: number;
-		setFontSize: (val: number) => void;
-		fontFamily: string;
-		setFontFamily: (val: string) => void;
-		spotlightDarkness: number;
-		setSpotlightDarkness: (val: number) => void;
-		pixelSize: number;
-		setPixelSize: (val: number) => void;
-		highlightColor: string;
-		setHighlightColor: (val: string) => void;
-		highlightStrokeWidth: number;
-		setHighlightStrokeWidth: (val: number) => void;
-		handleSettingChange: (prop: string, val: unknown) => void;
-	}
+	activeToolType: Tool | undefined;
+	strokeColor: string;
+	setStrokeColor: (val: string) => void;
+	strokeWidth: number;
+	setStrokeWidth: (val: number) => void;
+	useFill: boolean;
+	setUseFill: (val: boolean) => void;
+	fillColor: string;
+	setFillColor: (val: string) => void;
+	fontSize: number;
+	setFontSize: (val: number) => void;
+	fontFamily: string;
+	setFontFamily: (val: string) => void;
+	spotlightDarkness: number;
+	setSpotlightDarkness: (val: number) => void;
+	pixelSize: number;
+	setPixelSize: (val: number) => void;
+	highlightColor: string;
+	setHighlightColor: (val: string) => void;
+	highlightStrokeWidth: number;
+	setHighlightStrokeWidth: (val: number) => void;
+	handleSettingChange: (prop: string, val: unknown) => void;
+}
 
 export default function ToolSettings({
 	activeToolType,
@@ -70,6 +70,109 @@ export default function ToolSettings({
 	setHighlightStrokeWidth,
 	handleSettingChange,
 }: ToolSettingsProps) {
+	const debugSliderEnabled = () =>
+		typeof window !== "undefined" &&
+		window.localStorage.getItem("debugSlider") === "1";
+
+	const logSlider = (
+		id: string,
+		eventName: string,
+		event: React.SyntheticEvent<HTMLInputElement>,
+	) => {
+		if (!debugSliderEnabled()) return;
+		const target = event.currentTarget;
+		console.log(`[slider:${id}] ${eventName}`, {
+			value: target.value,
+			type: event.type,
+			buttons:
+				"buttons" in event ? (event as unknown as MouseEvent).buttons : 0,
+		});
+	};
+
+	const SizeSlider = ({
+		id,
+		value,
+		min,
+		max,
+		step = 1,
+		onChange,
+		ariaLabel,
+		tooltip,
+		suffix = "",
+	}: {
+		id: string;
+		value: number;
+		min: number;
+		max: number;
+		step?: number;
+		onChange: (val: number) => void;
+		ariaLabel: string;
+		tooltip: string;
+		suffix?: string;
+	}) => {
+		const valueFromClientX = (input: HTMLInputElement, clientX: number) => {
+			const rect = input.getBoundingClientRect();
+			const ratio = Math.min(
+				1,
+				Math.max(0, (clientX - rect.left) / rect.width),
+			);
+			const raw = min + ratio * (max - min);
+			const stepped = Math.round((raw - min) / step) * step + min;
+			const normalized = Number(stepped.toFixed(4));
+			return Math.min(max, Math.max(min, normalized));
+		};
+
+		return (
+			<div
+				className="flex items-center gap-2 rounded-md border border-input px-2 py-1 min-w-32"
+				title={tooltip}
+			>
+				<input
+					id={id}
+					type="range"
+					min={min}
+					max={max}
+					step={step}
+					value={value}
+					onInput={(e) => {
+						logSlider(id, "input", e);
+						onChange(Number((e.target as HTMLInputElement).value));
+					}}
+					onChange={(e) => {
+						logSlider(id, "change", e);
+						onChange(Number(e.target.value));
+					}}
+					onPointerDown={(e) => {
+						e.stopPropagation();
+						e.currentTarget.setPointerCapture(e.pointerId);
+						onChange(valueFromClientX(e.currentTarget, e.clientX));
+					}}
+					onPointerMove={(e) => {
+						logSlider(id, "pointermove", e);
+						if (e.buttons !== 1) return;
+						onChange(valueFromClientX(e.currentTarget, e.clientX));
+					}}
+					onPointerUp={(e) => {
+						logSlider(id, "pointerup", e);
+						if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+							e.currentTarget.releasePointerCapture(e.pointerId);
+						}
+					}}
+					onMouseDown={(e) => e.stopPropagation()}
+					onTouchStart={(e) => e.stopPropagation()}
+					onDragStart={(e) => e.preventDefault()}
+					draggable={false}
+					aria-label={ariaLabel}
+					className="w-full h-2 accent-primary cursor-pointer"
+				/>
+				<span className="text-xs tabular-nums text-muted-foreground w-10 text-right">
+					{value}
+					{suffix}
+				</span>
+			</div>
+		);
+	};
+
 	const ColorPickerWithSwatches = ({
 		currentColor,
 		onColorSelect,
@@ -154,24 +257,18 @@ export default function ToolSettings({
 						colorType="opaque"
 						tooltip="Stroke Color"
 					/>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Input
-								id="strokeWidth"
-								type="number"
-								value={strokeWidth}
-								onChange={(e) => {
-									const val = Number.parseInt(e.target.value);
-									setStrokeWidth(val);
-									handleSettingChange("strokeWidth", val);
-								}}
-								min="1"
-								className="h-8 w-16"
-								aria-label="Stroke Width"
-							/>
-						</TooltipTrigger>
-						<TooltipContent>Stroke Width</TooltipContent>
-					</Tooltip>
+					<SizeSlider
+						id="strokeWidth"
+						value={strokeWidth}
+						min={1}
+						max={24}
+						onChange={(val) => {
+							setStrokeWidth(val);
+							handleSettingChange("strokeWidth", val);
+						}}
+						ariaLabel="Stroke Width"
+						tooltip="Stroke Width"
+					/>
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<div className="flex items-center p-2 rounded-md hover:bg-accent">
@@ -217,46 +314,51 @@ export default function ToolSettings({
 						tooltip="Color"
 					/>
 					{activeToolType !== "text" && (
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Input
-									id="strokeWidth"
-									type="number"
-									value={strokeWidth}
-									onChange={(e) => {
-										const val = Number.parseInt(e.target.value);
-										setStrokeWidth(val);
-										handleSettingChange("strokeWidth", val);
-									}}
-									min="1"
-									className="h-8 w-16"
-									aria-label="Line Width"
-								/>
-							</TooltipTrigger>
-							<TooltipContent>Line Width</TooltipContent>
-						</Tooltip>
+						<SizeSlider
+							id="strokeWidth"
+							value={strokeWidth}
+							min={1}
+							max={24}
+							onChange={(val) => {
+								setStrokeWidth(val);
+								handleSettingChange("strokeWidth", val);
+							}}
+							ariaLabel="Line Width"
+							tooltip="Line Width"
+						/>
 					)}
 					{activeToolType === "text" && (
 						<>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Input
-										id="fontSize"
-										type="number"
-										value={fontSize}
-										onChange={(e) => {
-											const val = Number.parseInt(e.target.value);
-											setFontSize(val);
-											handleSettingChange("fontSize", val);
-										}}
-										min="8"
-										className="h-8 w-16"
-										aria-label="Font Size"
-									/>
-								</TooltipTrigger>
-								<TooltipContent>Font Size</TooltipContent>
-							</Tooltip>
-							<div className="flex items-center gap-1">
+							<SizeSlider
+								id="fontSize"
+								value={fontSize}
+								min={8}
+								max={128}
+								onChange={(val) => {
+									setFontSize(val);
+									handleSettingChange("fontSize", val);
+								}}
+								ariaLabel="Font Size"
+								tooltip="Font Size"
+							/>
+							<div className="flex items-center gap-1 w-full">
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Input
+											id="fontFamily"
+											type="text"
+											value={fontFamily}
+											onChange={(e) => {
+												setFontFamily(e.target.value);
+												handleSettingChange("fontFamily", e.target.value);
+											}}
+											className="h-8 flex-1 min-w-24"
+											placeholder="Arial"
+											aria-label="Font Family"
+										/>
+									</TooltipTrigger>
+									<TooltipContent>Font Family</TooltipContent>
+								</Tooltip>
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<Button
@@ -319,23 +421,6 @@ export default function ToolSettings({
 									<TooltipContent>Monospace (Monaco)</TooltipContent>
 								</Tooltip>
 							</div>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Input
-										id="fontFamily"
-										type="text"
-										value={fontFamily}
-										onChange={(e) => {
-											setFontFamily(e.target.value);
-											handleSettingChange("fontFamily", e.target.value);
-										}}
-										className="h-8 w-24"
-										placeholder="Arial"
-										aria-label="Font Family"
-									/>
-								</TooltipTrigger>
-								<TooltipContent>Font Family</TooltipContent>
-							</Tooltip>
 						</>
 					)}
 				</>
@@ -363,25 +448,19 @@ export default function ToolSettings({
 			);
 		case "pixelate-area":
 			return (
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<div className="w-32">
-							<Slider
-								id="pixelSize"
-								min={2}
-								max={50}
-								step={1}
-								value={[pixelSize]}
-								onValueChange={(val) => {
-									setPixelSize(val[0]);
-									handleSettingChange("pixelSize", val[0]);
-								}}
-								aria-label="Pixel Size"
-							/>
-						</div>
-					</TooltipTrigger>
-					<TooltipContent>Pixel Size ({pixelSize}px)</TooltipContent>
-				</Tooltip>
+				<SizeSlider
+					id="pixelSize"
+					value={pixelSize}
+					min={2}
+					max={50}
+					onChange={(val) => {
+						setPixelSize(val);
+						handleSettingChange("pixelSize", val);
+					}}
+					ariaLabel="Pixel Size"
+					tooltip="Pixel Size"
+					suffix="px"
+				/>
 			);
 		case "highlight":
 			return (
@@ -395,24 +474,18 @@ export default function ToolSettings({
 						colorType="highlight"
 						tooltip="Highlight Color"
 					/>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Input
-								id="highlightStrokeWidth"
-								type="number"
-								value={highlightStrokeWidth}
-								onChange={(e) => {
-									const val = Number.parseInt(e.target.value);
-									setHighlightStrokeWidth(val);
-									handleSettingChange("strokeWidth", val);
-								}}
-								min="1"
-								className="h-8 w-16"
-								aria-label="Highlight Width"
-							/>
-						</TooltipTrigger>
-						<TooltipContent>Highlight Width</TooltipContent>
-					</Tooltip>
+					<SizeSlider
+						id="highlightStrokeWidth"
+						value={highlightStrokeWidth}
+						min={1}
+						max={60}
+						onChange={(val) => {
+							setHighlightStrokeWidth(val);
+							handleSettingChange("strokeWidth", val);
+						}}
+						ariaLabel="Highlight Width"
+						tooltip="Highlight Width"
+					/>
 				</>
 			);
 		default:
