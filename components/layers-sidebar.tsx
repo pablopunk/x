@@ -36,6 +36,7 @@ interface LayersSidebarProps {
 	annotations: Annotation[];
 	selectedAnnotation: string | null;
 	onAnnotationSelect: (id: string | null) => void;
+	onAnnotationDoubleClick: (id: string) => void;
 	onAnnotationDelete: (id: string) => void;
 	onAnnotationVisibilityToggle: (id: string) => void;
 	onAnnotationReorder: (fromIndex: number, toIndex: number) => void;
@@ -106,7 +107,10 @@ const getAnnotationLabel = (annotation: Annotation): string => {
 
 const getAnnotationColor = (annotation: Annotation): string => {
 	if ("strokeColor" in annotation) {
-		return annotation.strokeColor;
+		return (
+			annotation.strokeColor ??
+			("color" in annotation ? annotation.color : "#94a3b8")
+		);
 	}
 	if ("color" in annotation) {
 		return annotation.color;
@@ -132,6 +136,7 @@ const LayerItem = memo(
 			onDrop: (e: React.DragEvent, index: number) => void;
 			onDragEnd: () => void;
 			onSelect: (id: string | null) => void;
+			onDoubleClick: (id: string) => void;
 			onVisibilityToggle: (id: string) => void;
 			onDelete: (id: string) => void;
 			onKeyDown: (e: React.KeyboardEvent, index: number) => void;
@@ -152,6 +157,7 @@ const LayerItem = memo(
 				onDrop,
 				onDragEnd,
 				onSelect,
+				onDoubleClick,
 				onVisibilityToggle,
 				onDelete,
 				onKeyDown,
@@ -191,6 +197,7 @@ const LayerItem = memo(
 						onDragEnd={onDragEnd}
 						className="flex items-center gap-2 p-2 cursor-pointer"
 						onClick={() => onSelect(isSelected ? null : annotation.id)}
+						onDoubleClick={() => onDoubleClick(annotation.id)}
 					>
 						<GripVertical className="h-4 w-4 text-muted-foreground/50 cursor-grab active:cursor-grabbing" />
 
@@ -267,6 +274,7 @@ export default function LayersSidebar({
 	annotations,
 	selectedAnnotation,
 	onAnnotationSelect,
+	onAnnotationDoubleClick,
 	onAnnotationDelete,
 	onAnnotationVisibilityToggle,
 	onAnnotationReorder,
@@ -685,6 +693,7 @@ export default function LayersSidebar({
 												onDrop={handleDrop}
 												onDragEnd={handleDragEnd}
 												onSelect={onAnnotationSelect}
+												onDoubleClick={onAnnotationDoubleClick}
 												onVisibilityToggle={onAnnotationVisibilityToggle}
 												onDelete={handleDeleteClick}
 												onKeyDown={handleLayerKeyDown}

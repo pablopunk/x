@@ -5,8 +5,8 @@ import LayersSidebar from "@/components/layers-sidebar";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import {
 	Tooltip,
 	TooltipContent,
@@ -53,15 +53,23 @@ import {
 	Trash2,
 	Type,
 	Undo2,
+	ZoomIn,
+	ZoomOut,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import Image from "next/image";
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const RESIZE_HANDLE_SIZE = 10;
 const RESIZE_HANDLE_HIT_RADIUS = 12;
 const MIN_IMAGE_LAYER_SIZE = 24;
+const MIN_CANVAS_ZOOM = 0.25;
+const MAX_CANVAS_ZOOM = 8;
+const ZOOM_STEP = 0.1;
+const TEXT_LINE_HEIGHT = 1.2;
+const TEXT_BACKGROUND_PADDING_X = 8;
+const TEXT_BACKGROUND_PADDING_Y = 4;
 
 type ResizeHandle = "nw" | "ne" | "sw" | "se";
 
@@ -77,6 +85,12 @@ interface ResizeState {
 	handle: ResizeHandle;
 	anchor: Point;
 	aspectRatio: number;
+}
+
+interface WebKitGestureEvent extends Event {
+	scale: number;
+	clientX: number;
+	clientY: number;
 }
 
 function isCornerResizableAnnotation(
@@ -232,6 +246,69 @@ function drawSelectionOverlay(
 	ctx.restore();
 }
 
+function getTextLines(text: string) {
+	return text.replace(/\r\n/g, "\n").split("\n");
+}
+
+function measureTextAnnotation(
+	ctx: CanvasRenderingContext2D,
+	annotation: Pick<
+		TextAnnotation,
+		| "text"
+		| "fontSize"
+		| "fontFamily"
+		| "backgroundColor"
+		| "strokeWidth"
+		| "shadowBlur"
+		| "shadowOffsetX"
+		| "shadowOffsetY"
+	>,
+) {
+	const lines = getTextLines(annotation.text);
+	const lineHeight = annotation.fontSize * TEXT_LINE_HEIGHT;
+	ctx.save();
+	ctx.font = `${annotation.fontSize}px ${annotation.fontFamily}`;
+	const textWidth = Math.max(
+		1,
+		...lines.map((line) => ctx.measureText(line || " ").width),
+	);
+	ctx.restore();
+
+	const strokeInset = annotation.strokeWidth ? annotation.strokeWidth : 0;
+	const paddingX = annotation.backgroundColor ? TEXT_BACKGROUND_PADDING_X : 0;
+	const paddingY = annotation.backgroundColor ? TEXT_BACKGROUND_PADDING_Y : 0;
+	const shadowBlur = annotation.shadowBlur ?? 0;
+	const shadowOffsetX = annotation.shadowOffsetX ?? 0;
+	const shadowOffsetY = annotation.shadowOffsetY ?? 0;
+	const contentHeight = Math.max(
+		annotation.fontSize,
+		lines.length * lineHeight,
+	);
+	const width =
+		textWidth + paddingX * 2 + strokeInset * 2 + shadowBlur * 2 + shadowOffsetX;
+	const height =
+		contentHeight +
+		paddingY * 2 +
+		strokeInset * 2 +
+		shadowBlur * 2 +
+		shadowOffsetY;
+
+	return {
+		lines,
+		lineHeight,
+		textWidth,
+		contentHeight,
+		paddingX,
+		paddingY,
+		strokeInset,
+		shadowBlur,
+		shadowOffsetX,
+		shadowOffsetY,
+		width,
+		height,
+	};
+}
+
 export default function AnnotationCanvas() {
 	const { theme, resolvedTheme } = useTheme();
 	const { toast } = useToast();
@@ -262,6 +339,9 @@ export default function AnnotationCanvas() {
 	const [textInputPosition, setTextInputPosition] = useState<Point | null>(
 		null,
 	);
+	const [editingTextAnnotationId, setEditingTextAnnotationId] = useState<
+		string | null
+	>(null);
 	const [currentHighlightPoints, setCurrentHighlightPoints] = useState<Point[]>(
 		[],
 	);
@@ -273,6 +353,15 @@ export default function AnnotationCanvas() {
 	const [pixelSize, setPixelSize] = useState(DEFAULT_PIXEL_SIZE);
 	const [fontSize, setFontSize] = useState(24);
 	const [fontFamily, setFontFamily] = useState("Arial");
+	const [useTextBackground, setUseTextBackground] = useState(false);
+	const [textBackgroundColor, setTextBackgroundColor] = useState("#FFFFFF");
+	const [textStrokeColor, setTextStrokeColor] = useState("#111827");
+	const [textStrokeWidth, setTextStrokeWidth] = useState(0);
+	const [useTextShadow, setUseTextShadow] = useState(false);
+	const [textShadowColor, setTextShadowColor] = useState("#111827");
+	const [textShadowBlur, setTextShadowBlur] = useState(8);
+	const [textShadowOffsetX, setTextShadowOffsetX] = useState(4);
+	const [textShadowOffsetY, setTextShadowOffsetY] = useState(4);
 	const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR);
 	const [highlightStrokeWidth, setHighlightStrokeWidth] = useState(15);
 	const [isCanvasLoading, setIsCanvasLoading] = useState(false);
@@ -287,10 +376,70 @@ export default function AnnotationCanvas() {
 		null,
 	);
 	const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
-	const textInputFieldRef = useRef<HTMLInputElement>(null);
+	const textInputFieldRef = useRef<HTMLTextAreaElement>(null);
 	const textCardRef = useRef<HTMLDivElement>(null);
 	const canvasContainerRef = useRef<HTMLDivElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const gestureZoomStartRef = useRef(1);
+	const [zoom, setZoom] = useState(1);
+
+	const clampZoom = useCallback((nextZoom: number) => {
+		return Math.min(MAX_CANVAS_ZOOM, Math.max(MIN_CANVAS_ZOOM, nextZoom));
+	}, []);
+
+	const updateZoom = useCallback(
+		(nextZoom: number, origin?: { clientX: number; clientY: number }) => {
+			const canvas = canvasRef.current;
+			const container = canvasContainerRef.current;
+			if (!canvas || !container) {
+				setZoom(clampZoom(nextZoom));
+				return;
+			}
+
+			const clampedZoom = clampZoom(nextZoom);
+			if (Math.abs(clampedZoom - zoom) < 0.001) return;
+
+			const previousRect = canvas.getBoundingClientRect();
+			let originRatioX = 0.5;
+			let originRatioY = 0.5;
+
+			if (origin) {
+				originRatioX =
+					(origin.clientX - previousRect.left) / previousRect.width;
+				originRatioY =
+					(origin.clientY - previousRect.top) / previousRect.height;
+			}
+
+			originRatioX = Math.min(1, Math.max(0, originRatioX));
+			originRatioY = Math.min(1, Math.max(0, originRatioY));
+
+			setZoom(clampedZoom);
+
+			requestAnimationFrame(() => {
+				const updatedCanvas = canvasRef.current;
+				const updatedContainer = canvasContainerRef.current;
+				if (!updatedCanvas || !updatedContainer || !origin) return;
+
+				const nextRect = updatedCanvas.getBoundingClientRect();
+				const nextClientX = nextRect.left + nextRect.width * originRatioX;
+				const nextClientY = nextRect.top + nextRect.height * originRatioY;
+
+				updatedContainer.scrollLeft += nextClientX - origin.clientX;
+				updatedContainer.scrollTop += nextClientY - origin.clientY;
+			});
+		},
+		[clampZoom, zoom],
+	);
+
+	const resetZoom = useCallback(() => {
+		setZoom(1);
+		const container = canvasContainerRef.current;
+		if (!container) return;
+		requestAnimationFrame(() => {
+			container.scrollLeft = 0;
+			container.scrollTop = 0;
+		});
+	}, []);
 
 	const getSelectedAnnotation = useCallback(() => {
 		if (!selectedAnnotationId) return null;
@@ -298,6 +447,33 @@ export default function AnnotationCanvas() {
 			annotationHistory.state.find((a) => a.id === selectedAnnotationId) || null
 		);
 	}, [annotationHistory.state, selectedAnnotationId]);
+
+	const getAnnotationAtPoint = useCallback(
+		(point: Point) => {
+			for (let i = annotationHistory.state.length - 1; i >= 0; i--) {
+				const anno = annotationHistory.state[i];
+				if (
+					isPointInRect(point, {
+						x: anno.x,
+						y: anno.y,
+						width: anno.width,
+						height: anno.height,
+					})
+				) {
+					return anno;
+				}
+			}
+			return null;
+		},
+		[annotationHistory.state],
+	);
+
+	const openTextEditor = useCallback((annotation: TextAnnotation) => {
+		setSelectedAnnotationId(annotation.id);
+		setEditingTextAnnotationId(annotation.id);
+		setTextInputPosition({ x: annotation.x, y: annotation.y });
+		setCurrentText(annotation.text);
+	}, []);
 
 	useEffect(() => {
 		if (currentTool === "cursor" && selectedAnnotationId) {
@@ -315,6 +491,15 @@ export default function AnnotationCanvas() {
 						setStrokeColor(selectedAnno.color);
 						setFontSize(selectedAnno.fontSize);
 						setFontFamily(selectedAnno.fontFamily);
+						setUseTextBackground(Boolean(selectedAnno.backgroundColor));
+						setTextBackgroundColor(selectedAnno.backgroundColor || "#FFFFFF");
+						setTextStrokeColor(selectedAnno.strokeColor || "#111827");
+						setTextStrokeWidth(selectedAnno.strokeWidth ?? 0);
+						setUseTextShadow(Boolean(selectedAnno.shadowColor));
+						setTextShadowColor(selectedAnno.shadowColor || "#111827");
+						setTextShadowBlur(selectedAnno.shadowBlur ?? 8);
+						setTextShadowOffsetX(selectedAnno.shadowOffsetX ?? 4);
+						setTextShadowOffsetY(selectedAnno.shadowOffsetY ?? 4);
 						break;
 					case "arrow":
 					case "line":
@@ -340,6 +525,26 @@ export default function AnnotationCanvas() {
 					prevAnnos.map((anno) => {
 						if (anno.id === selectedAnnotationId) {
 							const updatedAnno = { ...anno, [propName]: value };
+							if (anno.type === "text") {
+								const textAnno = updatedAnno as TextAnnotation;
+								if (propName === "useTextBackground") {
+									textAnno.backgroundColor = value
+										? textBackgroundColor
+										: undefined;
+								}
+								if (propName === "backgroundColor") {
+									textAnno.backgroundColor = value as string;
+								}
+								if (propName === "useTextShadow") {
+									textAnno.shadowColor = value ? textShadowColor : undefined;
+									textAnno.shadowBlur = value ? textShadowBlur : 0;
+									textAnno.shadowOffsetX = value ? textShadowOffsetX : 0;
+									textAnno.shadowOffsetY = value ? textShadowOffsetY : 0;
+								}
+								if (propName === "shadowColor") {
+									textAnno.shadowColor = value as string;
+								}
+							}
 							if (propName === "useFill") {
 								(
 									updatedAnno as RectangleAnnotation | EllipseAnnotation
@@ -347,16 +552,10 @@ export default function AnnotationCanvas() {
 							}
 							if (
 								propName === "strokeColor" &&
-								(anno.type === "text" ||
-									anno.type === "arrow" ||
-									anno.type === "line")
+								(anno.type === "arrow" || anno.type === "line")
 							) {
-								(
-									updatedAnno as
-										| TextAnnotation
-										| ArrowAnnotation
-										| LineAnnotation
-								).color = value as string;
+								(updatedAnno as ArrowAnnotation | LineAnnotation).color =
+									value as string;
 							}
 							if (
 								propName === "fillColor" &&
@@ -369,6 +568,18 @@ export default function AnnotationCanvas() {
 							if (propName === "highlightColor" && anno.type === "highlight") {
 								(updatedAnno as HighlightAnnotation).color = value as string;
 							}
+							if (anno.type === "text") {
+								const canvas = canvasRef.current;
+								const ctx = canvas?.getContext("2d");
+								if (ctx) {
+									const measured = measureTextAnnotation(
+										ctx,
+										updatedAnno as TextAnnotation,
+									);
+									(updatedAnno as TextAnnotation).width = measured.width;
+									(updatedAnno as TextAnnotation).height = measured.height;
+								}
+							}
 							return updatedAnno;
 						}
 						return anno;
@@ -376,7 +587,17 @@ export default function AnnotationCanvas() {
 				);
 			}
 		},
-		[currentTool, selectedAnnotationId, annotationHistory, fillColor],
+		[
+			currentTool,
+			selectedAnnotationId,
+			annotationHistory,
+			fillColor,
+			textBackgroundColor,
+			textShadowBlur,
+			textShadowColor,
+			textShadowOffsetX,
+			textShadowOffsetY,
+		],
 	);
 
 	const drawCanvas = useCallback(() => {
@@ -510,6 +731,9 @@ export default function AnnotationCanvas() {
 		}
 
 		for (const anno of shapeAnnotations) {
+			if (anno.type === "text" && anno.id === editingTextAnnotationId) {
+				continue;
+			}
 			ctx.save();
 			if (anno.type === "rectangle") {
 				const rect = anno as RectangleAnnotation;
@@ -522,11 +746,54 @@ export default function AnnotationCanvas() {
 				ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 			} else if (anno.type === "text") {
 				const textAnno = anno as TextAnnotation;
-				ctx.fillStyle = textAnno.color;
 				ctx.font = `${textAnno.fontSize}px ${textAnno.fontFamily}`;
 				ctx.textAlign = "left";
 				ctx.textBaseline = "top";
-				ctx.fillText(textAnno.text, textAnno.x, textAnno.y);
+				const textLayout = measureTextAnnotation(ctx, textAnno);
+				const contentX =
+					textAnno.x +
+					textLayout.shadowBlur +
+					textLayout.strokeInset +
+					textLayout.paddingX;
+				const contentY =
+					textAnno.y +
+					textLayout.shadowBlur +
+					textLayout.strokeInset +
+					textLayout.paddingY;
+
+				ctx.shadowColor = textAnno.shadowColor || "transparent";
+				ctx.shadowBlur = textAnno.shadowColor ? (textAnno.shadowBlur ?? 0) : 0;
+				ctx.shadowOffsetX = textAnno.shadowColor
+					? (textAnno.shadowOffsetX ?? 0)
+					: 0;
+				ctx.shadowOffsetY = textAnno.shadowColor
+					? (textAnno.shadowOffsetY ?? 0)
+					: 0;
+
+				if (textAnno.backgroundColor) {
+					ctx.fillStyle = textAnno.backgroundColor;
+					ctx.fillRect(
+						textAnno.x + textLayout.shadowBlur,
+						textAnno.y + textLayout.shadowBlur,
+						textLayout.textWidth +
+							textLayout.paddingX * 2 +
+							textLayout.strokeInset * 2,
+						textLayout.contentHeight +
+							textLayout.paddingY * 2 +
+							textLayout.strokeInset * 2,
+					);
+				}
+
+				textLayout.lines.forEach((line, index) => {
+					const lineY = contentY + index * textLayout.lineHeight;
+					if ((textAnno.strokeWidth ?? 0) > 0 && textAnno.strokeColor) {
+						ctx.lineWidth = textAnno.strokeWidth ?? 0;
+						ctx.strokeStyle = textAnno.strokeColor;
+						ctx.strokeText(line || " ", contentX, lineY);
+					}
+					ctx.fillStyle = textAnno.color;
+					ctx.fillText(line || " ", contentX, lineY);
+				});
 			} else if (anno.type === "arrow") {
 				const arrow = anno as ArrowAnnotation;
 				ctx.strokeStyle = arrow.color;
@@ -746,6 +1013,7 @@ export default function AnnotationCanvas() {
 		highlightStrokeWidth,
 		currentHighlightPoints,
 		selectedAnnotationId,
+		editingTextAnnotationId,
 		theme,
 		resolvedTheme,
 	]);
@@ -811,12 +1079,64 @@ export default function AnnotationCanvas() {
 	}, [textInputPosition]);
 
 	useEffect(() => {
+		if (!mainImage) {
+			setZoom(1);
+		}
+	}, [mainImage]);
+
+	useEffect(() => {
+		const container = canvasContainerRef.current;
+		if (!container) return;
+
+		const handleWheel = (event: WheelEvent) => {
+			if (!mainImage || !event.ctrlKey) return;
+			event.preventDefault();
+			const scaleFactor = Math.exp(-event.deltaY * 0.01);
+			updateZoom(zoom * scaleFactor, {
+				clientX: event.clientX,
+				clientY: event.clientY,
+			});
+		};
+
+		const handleGestureStart = (event: Event) => {
+			if (!mainImage) return;
+			event.preventDefault();
+			gestureZoomStartRef.current = zoom;
+		};
+
+		const handleGestureChange = (event: Event) => {
+			if (!mainImage) return;
+			const gestureEvent = event as WebKitGestureEvent;
+			event.preventDefault();
+			updateZoom(gestureZoomStartRef.current * gestureEvent.scale, {
+				clientX: gestureEvent.clientX,
+				clientY: gestureEvent.clientY,
+			});
+		};
+
+		container.addEventListener("wheel", handleWheel, { passive: false });
+		container.addEventListener("gesturestart", handleGestureStart, {
+			passive: false,
+		});
+		container.addEventListener("gesturechange", handleGestureChange, {
+			passive: false,
+		});
+
+		return () => {
+			container.removeEventListener("wheel", handleWheel);
+			container.removeEventListener("gesturestart", handleGestureStart);
+			container.removeEventListener("gesturechange", handleGestureChange);
+		};
+	}, [mainImage, updateZoom, zoom]);
+
+	useEffect(() => {
 		if (!textInputPosition) return;
 		function handleClickOutside(event: MouseEvent) {
 			if (
 				textCardRef.current &&
 				!textCardRef.current.contains(event.target as Node)
 			) {
+				setEditingTextAnnotationId(null);
 				setTextInputPosition(null);
 				setCurrentText("");
 			}
@@ -984,7 +1304,11 @@ export default function AnnotationCanvas() {
 	useEffect(() => {
 		const handlePaste = async (e: ClipboardEvent) => {
 			// Only handle paste when not typing in text input
-			if (textInputPosition || (e.target as HTMLElement)?.tagName === "INPUT") {
+			if (
+				textInputPosition ||
+				(e.target as HTMLElement)?.tagName === "INPUT" ||
+				(e.target as HTMLElement)?.tagName === "TEXTAREA"
+			) {
 				return;
 			}
 
@@ -1102,21 +1426,7 @@ export default function AnnotationCanvas() {
 				}
 			}
 
-			let foundAnnotation: Annotation | null = null;
-			for (let i = annotationHistory.state.length - 1; i >= 0; i--) {
-				const anno = annotationHistory.state[i];
-				if (
-					isPointInRect(pos, {
-						x: anno.x,
-						y: anno.y,
-						width: anno.width,
-						height: anno.height,
-					})
-				) {
-					foundAnnotation = anno;
-					break;
-				}
-			}
+			const foundAnnotation = getAnnotationAtPoint(pos);
 			if (foundAnnotation) {
 				gestureStartAnnotationsRef.current = annotationHistory.state;
 				setSelectedAnnotationId(foundAnnotation.id);
@@ -1139,6 +1449,7 @@ export default function AnnotationCanvas() {
 		setSelectedAnnotationId(null);
 		setResizeState(null);
 		if (currentTool === "text") {
+			setEditingTextAnnotationId(null);
 			setTextInputPosition(pos);
 			setCurrentText("");
 			setIsDrawing(false);
@@ -1189,15 +1500,24 @@ export default function AnnotationCanvas() {
 							const ctx = canvas?.getContext("2d");
 							const nextFontSize = Math.max(
 								8,
-								Math.round(resizedBounds.height),
+								Math.round(
+									resizedBounds.height /
+										Math.max(
+											1,
+											getTextLines(anno.text).length * TEXT_LINE_HEIGHT,
+										),
+								),
 							);
 							let measuredWidth = resizedBounds.width;
+							let measuredHeight = resizedBounds.height;
 
 							if (ctx) {
-								ctx.save();
-								ctx.font = `${nextFontSize}px ${anno.fontFamily}`;
-								measuredWidth = Math.max(8, ctx.measureText(anno.text).width);
-								ctx.restore();
+								const measured = measureTextAnnotation(ctx, {
+									...anno,
+									fontSize: nextFontSize,
+								});
+								measuredWidth = measured.width;
+								measuredHeight = measured.height;
 							}
 
 							const x =
@@ -1206,7 +1526,7 @@ export default function AnnotationCanvas() {
 									: resizeState.anchor.x;
 							const y =
 								resizeState.handle === "nw" || resizeState.handle === "ne"
-									? resizeState.anchor.y - nextFontSize
+									? resizeState.anchor.y - measuredHeight
 									: resizeState.anchor.y;
 
 							return {
@@ -1214,7 +1534,7 @@ export default function AnnotationCanvas() {
 								x,
 								y,
 								width: measuredWidth,
-								height: nextFontSize,
+								height: measuredHeight,
 								fontSize: nextFontSize,
 							};
 						}
@@ -1481,6 +1801,7 @@ export default function AnnotationCanvas() {
 
 	const handleTextSubmit = () => {
 		if (!textInputPosition || !currentText.trim()) {
+			setEditingTextAnnotationId(null);
 			setTextInputPosition(null);
 			setCurrentText("");
 			return;
@@ -1489,9 +1810,17 @@ export default function AnnotationCanvas() {
 		if (!canvas) return;
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return;
-		ctx.font = `${fontSize}px ${fontFamily}`;
-		const textMetrics = ctx.measureText(currentText);
-		const newTextAnnotation: TextAnnotation = {
+		const measured = measureTextAnnotation(ctx, {
+			text: currentText,
+			fontSize,
+			fontFamily,
+			backgroundColor: useTextBackground ? textBackgroundColor : undefined,
+			strokeWidth: textStrokeWidth,
+			shadowBlur: useTextShadow ? textShadowBlur : 0,
+			shadowOffsetX: useTextShadow ? textShadowOffsetX : 0,
+			shadowOffsetY: useTextShadow ? textShadowOffsetY : 0,
+		});
+		const textAnnotation: TextAnnotation = {
 			id: Date.now().toString(),
 			type: "text",
 			x: textInputPosition.x,
@@ -1500,12 +1829,51 @@ export default function AnnotationCanvas() {
 			color: strokeColor,
 			fontSize,
 			fontFamily,
-			width: textMetrics.width,
-			height: fontSize,
+			backgroundColor: useTextBackground ? textBackgroundColor : undefined,
+			strokeColor: textStrokeWidth > 0 ? textStrokeColor : undefined,
+			strokeWidth: textStrokeWidth,
+			shadowColor: useTextShadow ? textShadowColor : undefined,
+			shadowBlur: useTextShadow ? textShadowBlur : 0,
+			shadowOffsetX: useTextShadow ? textShadowOffsetX : 0,
+			shadowOffsetY: useTextShadow ? textShadowOffsetY : 0,
+			width: measured.width,
+			height: measured.height,
 		};
-		annotationHistory.set((prev) => [...prev, newTextAnnotation]);
+		if (editingTextAnnotationId) {
+			annotationHistory.set((prev) =>
+				prev.map((anno) =>
+					anno.id === editingTextAnnotationId && anno.type === "text"
+						? { ...textAnnotation, id: editingTextAnnotationId }
+						: anno,
+				),
+			);
+		} else {
+			annotationHistory.set((prev) => [...prev, textAnnotation]);
+		}
+		setEditingTextAnnotationId(null);
 		setTextInputPosition(null);
 		setCurrentText("");
+	};
+
+	const handleTextAnnotationDoubleClick = useCallback(
+		(annotationId: string) => {
+			const annotation = annotationHistory.state.find(
+				(anno) => anno.id === annotationId,
+			);
+			if (!annotation || annotation.type !== "text") return;
+			openTextEditor(annotation);
+		},
+		[annotationHistory.state, openTextEditor],
+	);
+
+	const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+		if (currentTool !== "cursor" || !mainImage) return;
+		const annotation = getAnnotationAtPoint(getMousePosition(e));
+		if (!annotation || annotation.type !== "text") return;
+		openTextEditor(annotation);
+		setIsDraggingAnnotation(false);
+		setDragOffset(null);
+		setStartPoint(null);
 	};
 
 	const clearAllAnnotations = () => {
@@ -1658,6 +2026,7 @@ export default function AnnotationCanvas() {
 			setCurrentTool(tool);
 			if (tool !== "cursor") setSelectedAnnotationId(null);
 			if (textInputPosition && tool !== "text") {
+				setEditingTextAnnotationId(null);
 				setTextInputPosition(null);
 				setCurrentText("");
 			}
@@ -1753,7 +2122,29 @@ export default function AnnotationCanvas() {
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			// Don't trigger shortcuts if user is typing in an input
-			if (e.target instanceof HTMLInputElement) return;
+			if (
+				e.target instanceof HTMLInputElement ||
+				e.target instanceof HTMLTextAreaElement
+			)
+				return;
+
+			if (mainImage && (e.metaKey || e.ctrlKey)) {
+				if (e.key === "+" || e.key === "=") {
+					e.preventDefault();
+					updateZoom(zoom + ZOOM_STEP);
+					return;
+				}
+				if (e.key === "-") {
+					e.preventDefault();
+					updateZoom(zoom - ZOOM_STEP);
+					return;
+				}
+				if (e.key === "0") {
+					e.preventDefault();
+					resetZoom();
+					return;
+				}
+			}
 
 			switch (e.key.toLowerCase()) {
 				case "v":
@@ -1807,15 +2198,56 @@ export default function AnnotationCanvas() {
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [
 		annotationHistory,
+		mainImage,
 		selectedAnnotationId,
 		currentTool,
 		handleDeleteSelectedAnnotation,
+		resetZoom,
 		switchTool,
+		updateZoom,
+		zoom,
 	]);
 
 	const selectedAnno = getSelectedAnnotation();
+	const editingTextAnnotation = editingTextAnnotationId
+		? annotationHistory.state.find(
+				(annotation): annotation is TextAnnotation =>
+					annotation.id === editingTextAnnotationId &&
+					annotation.type === "text",
+			)
+		: null;
+	const editingTextLayout = useMemo(() => {
+		const canvas = canvasRef.current;
+		const ctx = canvas?.getContext("2d");
+		if (!ctx || !textInputPosition) return null;
+
+		return measureTextAnnotation(ctx, {
+			text: currentText || " ",
+			fontSize,
+			fontFamily,
+			backgroundColor: useTextBackground ? textBackgroundColor : undefined,
+			strokeWidth: textStrokeWidth,
+			shadowBlur: useTextShadow ? textShadowBlur : 0,
+			shadowOffsetX: useTextShadow ? textShadowOffsetX : 0,
+			shadowOffsetY: useTextShadow ? textShadowOffsetY : 0,
+		});
+	}, [
+		currentText,
+		fontFamily,
+		fontSize,
+		textInputPosition,
+		textBackgroundColor,
+		textShadowBlur,
+		textShadowOffsetX,
+		textShadowOffsetY,
+		textStrokeWidth,
+		useTextBackground,
+		useTextShadow,
+	]);
 	const activeToolType: Tool =
 		currentTool === "cursor" && selectedAnno ? selectedAnno.type : currentTool;
+	const canvasDisplayWidth = mainImage?.width ?? 600;
+	const canvasDisplayHeight = mainImage?.height ?? 400;
 
 	return (
 		<TooltipProvider>
@@ -1918,6 +2350,46 @@ export default function AnnotationCanvas() {
 					<Separator orientation="vertical" className="h-8 mx-2" />
 					<div className="mr-auto" />
 					<div className="flex items-center gap-1">
+						<div className="flex items-center rounded-md border bg-background/80 px-1 py-1 shadow-sm">
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										variant="ghost"
+										size="icon"
+										onClick={() => updateZoom(zoom - ZOOM_STEP)}
+										disabled={!mainImage || zoom <= MIN_CANVAS_ZOOM}
+										className="h-8 w-8"
+									>
+										<ZoomOut className="h-4 w-4" />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>Zoom Out</TooltipContent>
+							</Tooltip>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={resetZoom}
+								disabled={!mainImage}
+								className="h-8 min-w-16 px-2 text-xs tabular-nums"
+							>
+								{Math.round(zoom * 100)}%
+							</Button>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										variant="ghost"
+										size="icon"
+										onClick={() => updateZoom(zoom + ZOOM_STEP)}
+										disabled={!mainImage || zoom >= MAX_CANVAS_ZOOM}
+										className="h-8 w-8"
+									>
+										<ZoomIn className="h-4 w-4" />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>Zoom In</TooltipContent>
+							</Tooltip>
+						</div>
+						<Separator orientation="vertical" className="h-8 mx-2" />
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button
@@ -1968,7 +2440,7 @@ export default function AnnotationCanvas() {
 
 				<div
 					ref={canvasContainerRef}
-					className={`relative flex-grow bg-muted flex items-center justify-center overflow-hidden ${currentTool === "cursor" ? "cursor-default" : currentTool === "text" ? "text-cursor" : "cursor-crosshair"}`}
+					className={`relative flex-grow overflow-auto bg-muted ${currentTool === "cursor" ? "cursor-default" : currentTool === "text" ? "text-cursor" : "cursor-crosshair"}`}
 					onDrop={(e) => handleDrop(e, dropZone ?? undefined)}
 					onDragOver={handleDragOver}
 					onDragLeave={handleDragLeave}
@@ -1990,7 +2462,7 @@ export default function AnnotationCanvas() {
 							!(isCanvasLoading || isLoadingHistory)
 						)
 							fileInputRef.current.click();
-						if (currentTool === "cursor" && e.target === e.currentTarget) {
+						if (currentTool === "cursor") {
 							const pos = getMousePosition(e as unknown as React.MouseEvent);
 							let onAnnotation = false;
 							if (canvasRef.current) {
@@ -2022,15 +2494,25 @@ export default function AnnotationCanvas() {
 						}
 					}}
 				>
-					<canvas
-						ref={canvasRef}
-						onMouseDown={handleMouseDown}
-						onMouseMove={handleMouseMove}
-						onMouseUp={handleMouseUp}
-						onMouseLeave={handleMouseUp}
-						className="max-w-full max-h-full object-contain"
-						style={{ visibility: "visible" }}
-					/>
+					<div className="flex min-h-full min-w-full items-center justify-center p-6">
+						<div
+							style={{
+								width: `${canvasDisplayWidth * zoom}px`,
+								height: `${canvasDisplayHeight * zoom}px`,
+							}}
+						>
+							<canvas
+								ref={canvasRef}
+								onMouseDown={handleMouseDown}
+								onDoubleClick={handleCanvasDoubleClick}
+								onMouseMove={handleMouseMove}
+								onMouseUp={handleMouseUp}
+								onMouseLeave={handleMouseUp}
+								className="block h-full w-full max-w-none"
+								style={{ visibility: "visible" }}
+							/>
+						</div>
+					</div>
 					{textInputPosition && (
 						<div
 							ref={textCardRef}
@@ -2060,35 +2542,77 @@ export default function AnnotationCanvas() {
 										canvasDisplayXInContainer + clickXOnDisplayedCanvas;
 									const cardTop =
 										canvasDisplayYInContainer + clickYOnDisplayedCanvas;
+									const baseWidth = editingTextLayout
+										? editingTextLayout.width * currentDisplayScaleX
+										: editingTextAnnotation
+											? editingTextAnnotation.width * currentDisplayScaleX
+											: Math.max(220, fontSize * 6 * currentDisplayScaleX);
+									const baseHeight = editingTextLayout
+										? editingTextLayout.height * currentDisplayScaleY
+										: editingTextAnnotation
+											? editingTextAnnotation.height * currentDisplayScaleY
+											: Math.max(fontSize * TEXT_LINE_HEIGHT * 2, 48);
 									return {
 										position: "absolute",
 										left: `${cardLeft}px`,
 										top: `${cardTop}px`,
+										width: `${baseWidth}px`,
+										minHeight: `${baseHeight}px`,
 										zIndex: 10,
 									};
 								}
 								return { display: "none" };
 							})()}
 						>
-							<Card className="w-64 shadow-xl">
-								<CardContent className="p-2">
-									<Input
-										ref={textInputFieldRef}
-										type="text"
-										value={currentText}
-										onChange={(e) => setCurrentText(e.target.value)}
-										onKeyDown={(e) => {
-											if (e.key === "Enter") handleTextSubmit();
-											if (e.key === "Escape") {
-												setTextInputPosition(null);
-												setCurrentText("");
-											}
-										}}
-										className="w-full h-10 text-sm"
-										placeholder="Type text & press Enter..."
-									/>
-								</CardContent>
-							</Card>
+							<Textarea
+								ref={textInputFieldRef}
+								value={currentText}
+								onChange={(e) => setCurrentText(e.target.value)}
+								onKeyDown={(e) => {
+									if (
+										e.key === "Enter" &&
+										!e.shiftKey &&
+										!(e.metaKey || e.ctrlKey)
+									) {
+										e.preventDefault();
+										handleTextSubmit();
+									}
+									if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+										e.preventDefault();
+										handleTextSubmit();
+									}
+									if (e.key === "Escape") {
+										e.preventDefault();
+										handleTextSubmit();
+									}
+								}}
+								className="w-full resize-none overflow-hidden border border-dashed border-blue-500/70 bg-transparent p-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+								style={{
+									color: strokeColor,
+									fontSize: `${fontSize}px`,
+									lineHeight: TEXT_LINE_HEIGHT,
+									fontFamily,
+									backgroundColor: useTextBackground
+										? textBackgroundColor
+										: "transparent",
+									textShadow: useTextShadow
+										? `${textShadowOffsetX}px ${textShadowOffsetY}px ${textShadowBlur}px ${textShadowColor}`
+										: "none",
+									WebkitTextStroke:
+										textStrokeWidth > 0
+											? `${textStrokeWidth}px ${textStrokeColor}`
+											: undefined,
+									width: editingTextLayout
+										? `${editingTextLayout.width * zoom}px`
+										: undefined,
+									height: editingTextLayout
+										? `${editingTextLayout.height * zoom}px`
+										: editingTextAnnotation
+											? `${editingTextAnnotation.height * zoom}px`
+											: undefined,
+								}}
+								placeholder="Type text, Shift+Enter for a new line"
+							/>
 						</div>
 					)}
 					{isDraggingOver && mainImage && (
@@ -2155,6 +2679,7 @@ export default function AnnotationCanvas() {
 				annotations={annotationHistory.state}
 				selectedAnnotation={selectedAnnotationId}
 				onAnnotationSelect={handleLayerSelect}
+				onAnnotationDoubleClick={handleTextAnnotationDoubleClick}
 				onAnnotationDelete={handleLayerDelete}
 				onAnnotationVisibilityToggle={handleLayerVisibilityToggle}
 				onAnnotationReorder={handleLayerReorder}
@@ -2172,6 +2697,24 @@ export default function AnnotationCanvas() {
 					setFontSize,
 					fontFamily,
 					setFontFamily,
+					useTextBackground,
+					setUseTextBackground,
+					textBackgroundColor,
+					setTextBackgroundColor,
+					textStrokeColor,
+					setTextStrokeColor,
+					textStrokeWidth,
+					setTextStrokeWidth,
+					useTextShadow,
+					setUseTextShadow,
+					textShadowColor,
+					setTextShadowColor,
+					textShadowBlur,
+					setTextShadowBlur,
+					textShadowOffsetX,
+					setTextShadowOffsetX,
+					textShadowOffsetY,
+					setTextShadowOffsetY,
 					spotlightDarkness,
 					setSpotlightDarkness,
 					pixelSize,

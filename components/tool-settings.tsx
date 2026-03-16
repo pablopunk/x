@@ -35,6 +35,24 @@ export interface ToolSettingsProps {
 	setFontSize: (val: number) => void;
 	fontFamily: string;
 	setFontFamily: (val: string) => void;
+	useTextBackground: boolean;
+	setUseTextBackground: (val: boolean) => void;
+	textBackgroundColor: string;
+	setTextBackgroundColor: (val: string) => void;
+	textStrokeColor: string;
+	setTextStrokeColor: (val: string) => void;
+	textStrokeWidth: number;
+	setTextStrokeWidth: (val: number) => void;
+	useTextShadow: boolean;
+	setUseTextShadow: (val: boolean) => void;
+	textShadowColor: string;
+	setTextShadowColor: (val: string) => void;
+	textShadowBlur: number;
+	setTextShadowBlur: (val: number) => void;
+	textShadowOffsetX: number;
+	setTextShadowOffsetX: (val: number) => void;
+	textShadowOffsetY: number;
+	setTextShadowOffsetY: (val: number) => void;
 	spotlightDarkness: number;
 	setSpotlightDarkness: (val: number) => void;
 	pixelSize: number;
@@ -60,6 +78,24 @@ export default function ToolSettings({
 	setFontSize,
 	fontFamily,
 	setFontFamily,
+	useTextBackground,
+	setUseTextBackground,
+	textBackgroundColor,
+	setTextBackgroundColor,
+	textStrokeColor,
+	setTextStrokeColor,
+	textStrokeWidth,
+	setTextStrokeWidth,
+	useTextShadow,
+	setUseTextShadow,
+	textShadowColor,
+	setTextShadowColor,
+	textShadowBlur,
+	setTextShadowBlur,
+	textShadowOffsetX,
+	setTextShadowOffsetX,
+	textShadowOffsetY,
+	setTextShadowOffsetY,
 	spotlightDarkness,
 	setSpotlightDarkness,
 	pixelSize,
@@ -243,6 +279,12 @@ export default function ToolSettings({
 		);
 	};
 
+	const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+		<div className="w-full px-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+			{children}
+		</div>
+	);
+
 	switch (activeToolType) {
 		case "rectangle":
 		case "ellipse":
@@ -304,6 +346,9 @@ export default function ToolSettings({
 		case "text":
 			return (
 				<>
+					<SectionLabel>
+						{activeToolType === "text" ? "Text Color" : "Color"}
+					</SectionLabel>
 					<ColorPickerWithSwatches
 						currentColor={strokeColor}
 						onColorSelect={(newColor) => {
@@ -329,6 +374,7 @@ export default function ToolSettings({
 					)}
 					{activeToolType === "text" && (
 						<>
+							<SectionLabel>Typography</SectionLabel>
 							<SizeSlider
 								id="fontSize"
 								value={fontSize}
@@ -421,6 +467,126 @@ export default function ToolSettings({
 									<TooltipContent>Monospace (Monaco)</TooltipContent>
 								</Tooltip>
 							</div>
+							<SectionLabel>Background</SectionLabel>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<div className="flex items-center p-2 rounded-md hover:bg-accent">
+										<Checkbox
+											id="useTextBackground"
+											checked={useTextBackground}
+											onCheckedChange={(checked) => {
+												const val = Boolean(checked);
+												setUseTextBackground(val);
+												handleSettingChange("useTextBackground", val);
+											}}
+											aria-label="Text Background"
+										/>
+									</div>
+								</TooltipTrigger>
+								<TooltipContent>Text Background</TooltipContent>
+							</Tooltip>
+							{useTextBackground && (
+								<ColorPickerWithSwatches
+									currentColor={textBackgroundColor}
+									onColorSelect={(newColor) => {
+										setTextBackgroundColor(newColor);
+										handleSettingChange("backgroundColor", newColor);
+									}}
+									colorType="opaque"
+									tooltip="Background Color"
+								/>
+							)}
+							<SectionLabel>Stroke</SectionLabel>
+							<SizeSlider
+								id="textStrokeWidth"
+								value={textStrokeWidth}
+								min={0}
+								max={24}
+								onChange={(val) => {
+									setTextStrokeWidth(val);
+									handleSettingChange("strokeWidth", val);
+								}}
+								ariaLabel="Text Stroke Width"
+								tooltip="Text Stroke Width"
+							/>
+							{textStrokeWidth > 0 && (
+								<ColorPickerWithSwatches
+									currentColor={textStrokeColor}
+									onColorSelect={(newColor) => {
+										setTextStrokeColor(newColor);
+										handleSettingChange("strokeColor", newColor);
+									}}
+									colorType="opaque"
+									tooltip="Text Stroke Color"
+								/>
+							)}
+							<SectionLabel>Shadow</SectionLabel>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<div className="flex items-center p-2 rounded-md hover:bg-accent">
+										<Checkbox
+											id="useTextShadow"
+											checked={useTextShadow}
+											onCheckedChange={(checked) => {
+												const val = Boolean(checked);
+												setUseTextShadow(val);
+												handleSettingChange("useTextShadow", val);
+											}}
+											aria-label="Text Shadow"
+										/>
+									</div>
+								</TooltipTrigger>
+								<TooltipContent>Text Shadow</TooltipContent>
+							</Tooltip>
+							{useTextShadow && (
+								<>
+									<ColorPickerWithSwatches
+										currentColor={textShadowColor}
+										onColorSelect={(newColor) => {
+											setTextShadowColor(newColor);
+											handleSettingChange("shadowColor", newColor);
+										}}
+										colorType="opaque"
+										tooltip="Shadow Color"
+									/>
+									<SizeSlider
+										id="textShadowBlur"
+										value={textShadowBlur}
+										min={0}
+										max={32}
+										onChange={(val) => {
+											setTextShadowBlur(val);
+											handleSettingChange("shadowBlur", val);
+										}}
+										ariaLabel="Shadow Blur"
+										tooltip="Shadow Blur"
+									/>
+									<SizeSlider
+										id="textShadowOffsetX"
+										value={textShadowOffsetX}
+										min={0}
+										max={40}
+										onChange={(val) => {
+											setTextShadowOffsetX(val);
+											handleSettingChange("shadowOffsetX", val);
+										}}
+										ariaLabel="Shadow Offset X"
+										tooltip="Shadow Offset X"
+									/>
+									<SizeSlider
+										id="textShadowOffsetY"
+										value={textShadowOffsetY}
+										min={0}
+										max={40}
+										onChange={(val) => {
+											setTextShadowOffsetY(val);
+											handleSettingChange("shadowOffsetY", val);
+										}}
+										ariaLabel="Shadow Offset Y"
+										tooltip="Shadow Offset Y"
+									/>
+								</>
+							)}
 						</>
 					)}
 				</>

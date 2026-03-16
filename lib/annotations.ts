@@ -51,6 +51,13 @@ export interface TextAnnotation extends BaseAnnotation {
 	color: string;
 	fontSize: number;
 	fontFamily: string;
+	backgroundColor?: string;
+	strokeColor?: string;
+	strokeWidth?: number;
+	shadowColor?: string;
+	shadowBlur?: number;
+	shadowOffsetX?: number;
+	shadowOffsetY?: number;
 }
 
 export interface ArrowAnnotation extends BaseAnnotation {
@@ -118,6 +125,7 @@ export const DEFAULT_HIGHLIGHT_COLOR = `rgba(253, 224, 71, ${DEFAULT_HIGHLIGHT_A
 export const DEFAULT_PIXEL_SIZE = 10;
 
 export const PREDEFINED_OPAQUE_COLORS = [
+	"#FFFFFF",
 	"#FCA5A5",
 	"#FDBA74",
 	"#FDE047",
