@@ -1211,6 +1211,64 @@ export default function AnnotationCanvas() {
 		});
 	};
 
+	const insertImageAsLayer = useCallback(
+		async (file: File) => {
+			const img = await handleImageAsLayer(file);
+			const canvas = canvasRef.current;
+			if (!canvas) return false;
+
+			const selectedAnnotation = getSelectedAnnotation();
+			if (selectedAnnotation?.type === "image") {
+				annotationHistory.set((prev) =>
+					prev.map((annotation) =>
+						annotation.id === selectedAnnotation.id
+							? {
+									...annotation,
+									imageSrc: img.src,
+									originalWidth: img.width,
+									originalHeight: img.height,
+								}
+							: annotation,
+					),
+				);
+				toast({
+					title: "Image replaced",
+					description: "The selected image layer was updated.",
+				});
+				return true;
+			}
+
+			const maxSize = 200;
+			let width = img.width;
+			let height = img.height;
+			if (width > maxSize || height > maxSize) {
+				const ratio = Math.min(maxSize / width, maxSize / height);
+				width = width * ratio;
+				height = height * ratio;
+			}
+
+			const newImageAnnotation: ImageAnnotation = {
+				id: Date.now().toString(),
+				type: "image",
+				x: (canvas.width - width) / 2,
+				y: (canvas.height - height) / 2,
+				width,
+				height,
+				imageSrc: img.src,
+				originalWidth: img.width,
+				originalHeight: img.height,
+			};
+			annotationHistory.set((prev) => [...prev, newImageAnnotation]);
+			setSelectedAnnotationId(newImageAnnotation.id);
+			toast({
+				title: "Image added as layer",
+				description: "You can now move and resize the image layer.",
+			});
+			return true;
+		},
+		[annotationHistory, getSelectedAnnotation, toast],
+	);
+
 	const handleDrop = (
 		e: React.DragEvent<HTMLDivElement>,
 		zone?: "replace" | "add-layer",
@@ -1231,36 +1289,7 @@ export default function AnnotationCanvas() {
 			if (!file.type.startsWith("image/")) return;
 
 			if (mainImage && zone === "add-layer") {
-				handleImageAsLayer(file).then((img) => {
-					const canvas = canvasRef.current;
-					if (!canvas) return;
-
-					const maxSize = 200;
-					let width = img.width;
-					let height = img.height;
-					if (width > maxSize || height > maxSize) {
-						const ratio = Math.min(maxSize / width, maxSize / height);
-						width = width * ratio;
-						height = height * ratio;
-					}
-
-					const newImageAnnotation: ImageAnnotation = {
-						id: Date.now().toString(),
-						type: "image",
-						x: (canvas.width - width) / 2,
-						y: (canvas.height - height) / 2,
-						width,
-						height,
-						imageSrc: img.src,
-						originalWidth: img.width,
-						originalHeight: img.height,
-					};
-					annotationHistory.set((prev) => [...prev, newImageAnnotation]);
-					toast({
-						title: "Image added as layer",
-						description: "You can now move and resize the image layer.",
-					});
-				});
+				void insertImageAsLayer(file);
 			} else {
 				handleImageUpload(file);
 			}
@@ -1325,16 +1354,16 @@ export default function AnnotationCanvas() {
 					e.preventDefault();
 					const blob = item.getAsFile();
 					if (blob) {
-						// Create a File object from the blob for consistency with existing upload flow
 						const file = new File([blob], `pasted-image-${Date.now()}.png`, {
 							type: blob.type || "image/png",
 						});
 
-						await handleImageUpload(file);
-						toast({
-							title: "Image pasted successfully",
-							description: "Your pasted image has been loaded into the canvas.",
-						});
+						const selectedAnnotation = getSelectedAnnotation();
+						if (mainImage && selectedAnnotation?.type === "image") {
+							await insertImageAsLayer(file);
+						} else {
+							await handleImageUpload(file);
+						}
 					}
 					break;
 				}
@@ -1349,8 +1378,10 @@ export default function AnnotationCanvas() {
 		textInputPosition,
 		isCanvasLoading,
 		isLoadingHistory,
+		mainImage,
+		getSelectedAnnotation,
 		handleImageUpload,
-		toast,
+		insertImageAsLayer,
 	]);
 	const getMousePosition = (e: React.MouseEvent): Point => {
 		const canvas = canvasRef.current;
@@ -2252,7 +2283,7 @@ export default function AnnotationCanvas() {
 	return (
 		<TooltipProvider>
 			<div className="w-full h-full flex flex-col bg-background relative">
-				<div className="flex flex-nowrap items-center overflow-x-auto gap-1 p-2">
+				<div className="flex h-14 shrink-0 flex-nowrap items-center overflow-x-auto gap-1 p-2">
 					<Image
 						src="/favicon/favicon-96x96.png"
 						alt="Logo"
@@ -2440,7 +2471,7 @@ export default function AnnotationCanvas() {
 
 				<div
 					ref={canvasContainerRef}
-					className={`relative flex-grow overflow-auto bg-muted ${currentTool === "cursor" ? "cursor-default" : currentTool === "text" ? "text-cursor" : "cursor-crosshair"}`}
+					className={`relative min-h-0 flex-grow overflow-auto bg-muted ${currentTool === "cursor" ? "cursor-default" : currentTool === "text" ? "text-cursor" : "cursor-crosshair"}`}
 					onDrop={(e) => handleDrop(e, dropZone ?? undefined)}
 					onDragOver={handleDragOver}
 					onDragLeave={handleDragLeave}

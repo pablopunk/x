@@ -1,5 +1,5 @@
 import type React from "react";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -7,6 +7,13 @@ import { Toaster } from "@/components/ui/toaster"; // Ensure this path is correc
 import Script from "next/script";
 
 const inter = Inter({ subsets: ["latin"] });
+
+export const viewport: Viewport = {
+	width: "device-width",
+	initialScale: 1,
+	maximumScale: 1,
+	userScalable: false,
+};
 
 export const metadata: Metadata = {
 	metadataBase: new URL("https://x.pablopunk.com"),
