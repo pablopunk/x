@@ -375,6 +375,7 @@ export default function AnnotationCanvas() {
 	const [dropZone, setDropZone] = useState<"replace" | "add-layer" | null>(
 		null,
 	);
+	const [pendingPasteFile, setPendingPasteFile] = useState<File | null>(null);
 	const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
 	const textInputFieldRef = useRef<HTMLTextAreaElement>(null);
 	const textCardRef = useRef<HTMLDivElement>(null);
@@ -1332,7 +1333,6 @@ export default function AnnotationCanvas() {
 	// Add clipboard paste functionality
 	useEffect(() => {
 		const handlePaste = async (e: ClipboardEvent) => {
-			// Only handle paste when not typing in text input
 			if (
 				textInputPosition ||
 				(e.target as HTMLElement)?.tagName === "INPUT" ||
@@ -1353,17 +1353,22 @@ export default function AnnotationCanvas() {
 				if (item.type.indexOf("image") !== -1) {
 					e.preventDefault();
 					const blob = item.getAsFile();
-					if (blob) {
-						const file = new File([blob], `pasted-image-${Date.now()}.png`, {
-							type: blob.type || "image/png",
-						});
+					if (!blob) break;
 
-						const selectedAnnotation = getSelectedAnnotation();
-						if (mainImage && selectedAnnotation?.type === "image") {
-							await insertImageAsLayer(file);
-						} else {
-							await handleImageUpload(file);
-						}
+					const file = new File([blob], `pasted-image-${Date.now()}.png`, {
+						type: blob.type || "image/png",
+					});
+
+					if (mainImage) {
+						setPendingPasteFile(file);
+						setIsDraggingOver(true);
+						setDropZone("replace");
+						toast({
+							title: "Choose where to paste",
+							description: "Click left to open a new image, or right to add as a layer.",
+						});
+					} else {
+						await handleImageUpload(file);
 					}
 					break;
 				}
@@ -1379,9 +1384,8 @@ export default function AnnotationCanvas() {
 		isCanvasLoading,
 		isLoadingHistory,
 		mainImage,
-		getSelectedAnnotation,
 		handleImageUpload,
-		insertImageAsLayer,
+		toast,
 	]);
 	const getMousePosition = (e: React.MouseEvent): Point => {
 		const canvas = canvasRef.current;
@@ -2475,6 +2479,13 @@ export default function AnnotationCanvas() {
 					onDrop={(e) => handleDrop(e, dropZone ?? undefined)}
 					onDragOver={handleDragOver}
 					onDragLeave={handleDragLeave}
+					onMouseMove={(e) => {
+						if (!pendingPasteFile || !mainImage) return;
+						const rect = canvasContainerRef.current?.getBoundingClientRect();
+						if (!rect) return;
+						const x = e.clientX - rect.left;
+						setDropZone(x < rect.width / 2 ? "replace" : "add-layer");
+					}}
 					onKeyDown={(e) => {
 						if (
 							(e.key === "Enter" || e.key === " ") &&
@@ -2487,6 +2498,18 @@ export default function AnnotationCanvas() {
 						}
 					}}
 					onClick={(e) => {
+						if (pendingPasteFile && mainImage) {
+							const zone = dropZone ?? "replace";
+							if (zone === "add-layer") {
+								void insertImageAsLayer(pendingPasteFile);
+							} else {
+								void handleImageUpload(pendingPasteFile);
+							}
+							setPendingPasteFile(null);
+							setIsDraggingOver(false);
+							setDropZone(null);
+							return;
+						}
 						if (
 							!mainImage &&
 							fileInputRef.current &&
