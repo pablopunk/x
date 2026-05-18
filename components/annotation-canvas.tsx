@@ -1211,6 +1211,9 @@ export default function AnnotationCanvas() {
 		});
 	};
 
+	const hasDraggedFiles = (dataTransfer: DataTransfer) =>
+		Array.from(dataTransfer.types || []).includes("Files");
+
 	const handleDrop = (
 		e: React.DragEvent<HTMLDivElement>,
 		zone?: "replace" | "add-layer",
@@ -1221,6 +1224,8 @@ export default function AnnotationCanvas() {
 				files: e.dataTransfer.files?.length ?? 0,
 			});
 		}
+		if (!hasDraggedFiles(e.dataTransfer)) return;
+
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(false);
@@ -1275,6 +1280,8 @@ export default function AnnotationCanvas() {
 				y: e.clientY,
 			});
 		}
+		if (!hasDraggedFiles(e.dataTransfer)) return;
+
 		e.preventDefault();
 		e.stopPropagation();
 
@@ -1294,6 +1301,8 @@ export default function AnnotationCanvas() {
 		if (window.localStorage.getItem("debugSlider") === "1") {
 			console.log("[dnd] dragleave");
 		}
+		if (!hasDraggedFiles(e.dataTransfer)) return;
+
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(false);
