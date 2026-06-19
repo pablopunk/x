@@ -18,7 +18,8 @@
   - No tracking
   - No ads
   - No cookies
-- **Local-First:**
+- **Works Offline:**
+  - Works without internet connection after first visit
   - All data stored locally in your browser
   - Images and annotations never leave your device
   - No installation required

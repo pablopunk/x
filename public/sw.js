@@ -1,7 +1,8 @@
 const CACHE_NAME = 'x-static-v2';
 
-// Files to cache for offline functionality (static assets only, NOT HTML pages)
+// Static assets to precache (never includes HTML with hashed JS references)
 const STATIC_FILES = [
+  '/offline.html',
   '/favicon/favicon.ico',
   '/favicon/favicon.svg',
   '/favicon/apple-touch-icon.png',
@@ -79,5 +80,13 @@ self.addEventListener('fetch', (event) => {
 
   // Everything else (HTML, JS, CSS, etc.): network-only
   // NEVER cache HTML — it contains hashed JS/CSS references that change on every deploy
-  event.respondWith(fetch(request));
+  event.respondWith(
+    fetch(request).catch(() => {
+      // If offline and requesting a page, serve the static offline fallback
+      if (request.destination === 'document') {
+        return caches.match('/offline.html');
+      }
+      throw new Error('Offline');
+    })
+  );
 }); 
