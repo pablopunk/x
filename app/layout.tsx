@@ -81,23 +81,27 @@ export default function RootLayout({
 						data-goatcounter="/goat"
 						async
 						src="/count.js"
-						strategy="afterInteractive"
+						strategy="lazyOnload"
 					/>
 				)}
 				<Script
 					id="service-worker"
-					strategy="afterInteractive"
+					strategy="lazyOnload"
 					dangerouslySetInnerHTML={{
 						__html: `
 							if ('serviceWorker' in navigator) {
-								window.addEventListener('load', function() {
-									navigator.serviceWorker.register('/sw.js')
-										.then(function(registration) {
-											console.log('SW registered: ', registration);
-										})
-										.catch(function(registrationError) {
-											console.log('SW registration failed: ', registrationError);
-										});
+								var hadController = !!navigator.serviceWorker.controller;
+								navigator.serviceWorker.register('/sw.js')
+									.then(function(registration) {
+										console.log('SW registered: ', registration);
+									})
+									.catch(function(registrationError) {
+										console.log('SW registration failed: ', registrationError);
+									});
+								navigator.serviceWorker.addEventListener('controllerchange', function() {
+									if (hadController) {
+										window.location.reload();
+									}
 								});
 							}
 						`,

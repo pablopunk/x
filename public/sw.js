@@ -1,9 +1,7 @@
-const CACHE_NAME = 'x-annotation-v1';
-const STATIC_CACHE_NAME = 'x-static-v1';
+const CACHE_NAME = 'x-static-v2';
 
-// Files to cache for offline functionality
+// Files to cache for offline functionality (static assets only, NOT HTML pages)
 const STATIC_FILES = [
-  '/',
   '/favicon/favicon.ico',
   '/favicon/favicon.svg',
   '/favicon/apple-touch-icon.png',
@@ -15,14 +13,11 @@ const STATIC_FILES = [
   '/screenshot.webp',
 ];
 
-// Install event - cache static files
+// Install event - cache static files, then take control immediately
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE_NAME)
-      .then((cache) => {
-        console.log('Caching static files');
-        return cache.addAll(STATIC_FILES);
-      })
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(STATIC_FILES))
       .catch((error) => {
         console.error('Failed to cache static files:', error);
       })
@@ -30,24 +25,24 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up ALL old caches (including old HTML-caching versions)
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== STATIC_CACHE_NAME && cacheName !== CACHE_NAME) {
+        cacheNames
+          .filter((cacheName) => cacheName !== CACHE_NAME)
+          .map((cacheName) => {
             console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
-          }
-        })
+          })
       );
     })
   );
   self.clients.claim();
 });
 
-// Fetch event - serve from cache when offline
+// Fetch event - cache-first for static files, network-only for everything else
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -62,58 +57,27 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle static files
+  // Static files: cache-first (they rarely change, and we use versioned cache names)
   if (STATIC_FILES.includes(url.pathname)) {
     event.respondWith(
       caches.match(request)
-        .then((response) => {
-          return response || fetch(request);
+        .then((cachedResponse) => {
+          if (cachedResponse) return cachedResponse;
+          return fetch(request).then((response) => {
+            if (response.status === 200) {
+              const responseClone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request, responseClone);
+              });
+            }
+            return response;
+          });
         })
     );
     return;
   }
 
-  // Handle app shell (HTML, CSS, JS)
-  if (request.destination === 'document' || 
-      request.destination === 'script' || 
-      request.destination === 'style') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // Cache successful responses
-          if (response.status === 200) {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, responseClone);
-            });
-          }
-          return response;
-        })
-        .catch(() => {
-          // Return cached version if fetch fails
-          return caches.match(request);
-        })
-    );
-    return;
-  }
-
-  // For other requests, try network first, then cache
-  event.respondWith(
-    fetch(request)
-      .catch(() => {
-        return caches.match(request);
-      })
-  );
-});
-
-// Background sync for future features
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'background-sync') {
-    event.waitUntil(doBackgroundSync());
-  }
-});
-
-async function doBackgroundSync() {
-  // Future: Implement background sync for any server operations
-  console.log('Background sync triggered');
-} 
+  // Everything else (HTML, JS, CSS, etc.): network-only
+  // NEVER cache HTML — it contains hashed JS/CSS references that change on every deploy
+  event.respondWith(fetch(request));
+}); 

@@ -1,7 +1,7 @@
 {
   "name": "X annotate",
   "short_name": "X",
-  "description": "Free image annotation tool that works offline",
+  "description": "Free image annotation tool — local-first, no account needed",
   "start_url": "/",
   "scope": "/",
   "icons": [

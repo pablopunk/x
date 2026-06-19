@@ -18,9 +18,9 @@
   - No tracking
   - No ads
   - No cookies
-- **Works Offline:**
-  - Works without internet connection after first visit
-  - All data stored locally
+- **Local-First:**
+  - All data stored locally in your browser
+  - Images and annotations never leave your device
   - No installation required
 - **Annotation Tools:**
   - Draw shapes (rectangles, ellipses, lines, arrows)
