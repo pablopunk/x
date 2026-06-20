@@ -1204,10 +1204,10 @@ export default function AnnotationCanvas() {
 			reader.onload = (event) => {
 				const img = new window.Image();
 				img.onload = () => resolve(img);
-				img.onerror = reject;
+				img.onerror = () => reject(new Error('Failed to load image data'));
 				img.src = event.target?.result as string;
 			};
-			reader.onerror = reject;
+			reader.onerror = () => reject(new Error('Failed to read image file'));
 			reader.readAsDataURL(file);
 		});
 	};
@@ -1217,58 +1217,68 @@ export default function AnnotationCanvas() {
 
 	const insertImageAsLayer = useCallback(
 		async (file: File) => {
-			const img = await handleImageAsLayer(file);
-			const canvas = canvasRef.current;
-			if (!canvas) return false;
+			try {
+				const img = await handleImageAsLayer(file);
+				const canvas = canvasRef.current;
+				if (!canvas) return false;
 
-			const selectedAnnotation = getSelectedAnnotation();
-			if (selectedAnnotation?.type === "image") {
-				annotationHistory.set((prev) =>
-					prev.map((annotation) =>
-						annotation.id === selectedAnnotation.id
-							? {
-									...annotation,
-									imageSrc: img.src,
-									originalWidth: img.width,
-									originalHeight: img.height,
-								}
-							: annotation,
-					),
-				);
+				const selectedAnnotation = getSelectedAnnotation();
+				if (selectedAnnotation?.type === "image") {
+					annotationHistory.set((prev) =>
+						prev.map((annotation) =>
+							annotation.id === selectedAnnotation.id
+								? {
+										...annotation,
+										imageSrc: img.src,
+										originalWidth: img.width,
+										originalHeight: img.height,
+									}
+								: annotation,
+						),
+					);
+					toast({
+						title: "Image replaced",
+						description: "The selected image layer was updated.",
+					});
+					return true;
+				}
+
+				const maxSize = 200;
+				let width = img.width;
+				let height = img.height;
+				if (width > maxSize || height > maxSize) {
+					const ratio = Math.min(maxSize / width, maxSize / height);
+					width = width * ratio;
+					height = height * ratio;
+				}
+
+				const newImageAnnotation: ImageAnnotation = {
+					id: Date.now().toString(),
+					type: "image",
+					x: (canvas.width - width) / 2,
+					y: (canvas.height - height) / 2,
+					width,
+					height,
+					imageSrc: img.src,
+					originalWidth: img.width,
+					originalHeight: img.height,
+				};
+				annotationHistory.set((prev) => [...prev, newImageAnnotation]);
+				setSelectedAnnotationId(newImageAnnotation.id);
 				toast({
-					title: "Image replaced",
-					description: "The selected image layer was updated.",
+					title: "Image added as layer",
+					description: "You can now move and resize the image layer.",
 				});
 				return true;
+			} catch (err) {
+				console.error(err);
+				toast({
+					title: "Failed to add image",
+					description: "The image could not be loaded as a layer.",
+					variant: "destructive",
+				});
+				return false;
 			}
-
-			const maxSize = 200;
-			let width = img.width;
-			let height = img.height;
-			if (width > maxSize || height > maxSize) {
-				const ratio = Math.min(maxSize / width, maxSize / height);
-				width = width * ratio;
-				height = height * ratio;
-			}
-
-			const newImageAnnotation: ImageAnnotation = {
-				id: Date.now().toString(),
-				type: "image",
-				x: (canvas.width - width) / 2,
-				y: (canvas.height - height) / 2,
-				width,
-				height,
-				imageSrc: img.src,
-				originalWidth: img.width,
-				originalHeight: img.height,
-			};
-			annotationHistory.set((prev) => [...prev, newImageAnnotation]);
-			setSelectedAnnotationId(newImageAnnotation.id);
-			toast({
-				title: "Image added as layer",
-				description: "You can now move and resize the image layer.",
-			});
-			return true;
 		},
 		[annotationHistory, getSelectedAnnotation, toast],
 	);
@@ -1295,7 +1305,7 @@ export default function AnnotationCanvas() {
 			if (!file.type.startsWith("image/")) return;
 
 			if (mainImage && zone === "add-layer") {
-				void insertImageAsLayer(file);
+				insertImageAsLayer(file).catch(() => undefined);
 			} else {
 				handleImageUpload(file);
 			}
@@ -2510,7 +2520,7 @@ export default function AnnotationCanvas() {
 						if (pendingPasteFile && mainImage) {
 							const zone = dropZone ?? "replace";
 							if (zone === "add-layer") {
-								void insertImageAsLayer(pendingPasteFile);
+								insertImageAsLayer(pendingPasteFile).catch(() => undefined);
 							} else {
 								void handleImageUpload(pendingPasteFile);
 							}
