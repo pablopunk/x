@@ -1179,6 +1179,11 @@ export default function AnnotationCanvas() {
 				}
 			} catch (error) {
 				console.error("Error during image upload process:", error);
+				toast({
+					variant: "destructive",
+					title: "Image upload failed",
+					description: `Failed to load image: ${error instanceof Error ? error.message : "Unknown error"}`,
+				});
 			} finally {
 				setIsCanvasLoading(false);
 			}
@@ -2450,7 +2455,7 @@ export default function AnnotationCanvas() {
 									variant="ghost"
 									size="icon"
 									onClick={() =>
-										window.open("https://github.com/pablopunk/x", "_blank")
+										window.open("https://github.com/pablopunk/x", "_blank", "noopener,noreferrer")
 									}
 									className="h-9 w-9"
 								>
