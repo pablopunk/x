@@ -143,7 +143,7 @@ export const hexToRgba = (hex: string, alpha = 1): string => {
 };
 
 export const rgbaToHex = (rgba: string): string => {
-	const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+	const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/i);
 	if (!match) return "#000000";
 	const r = Number.parseInt(match[1]).toString(16).padStart(2, "0");
 	const g = Number.parseInt(match[2]).toString(16).padStart(2, "0");
