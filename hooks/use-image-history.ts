@@ -260,6 +260,7 @@ export const useImageHistory = () => {
 					const imageBlob = new Blob([imageFile], { type: imageFile.type });
 					const imageResult = await storeBlob(imageId, imageBlob);
 					if (!imageResult.success) {
+						if (!isAnnotationOnlyUpdate) setIsLoading(false);
 						return {entry: null, error: imageResult.error || "Failed to store image"};
 					}
 					const thumbBlob = await createThumbnail(
@@ -269,6 +270,7 @@ export const useImageHistory = () => {
 					);
 					const thumbResult = await storeBlob(thumbnailId, thumbBlob);
 					if (!thumbResult.success) {
+						if (!isAnnotationOnlyUpdate) setIsLoading(false);
 						return {entry: null, error: thumbResult.error || "Failed to store thumbnail"};
 					}
 					const newThumbUrl = URL.createObjectURL(thumbBlob);

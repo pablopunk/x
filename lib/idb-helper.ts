@@ -35,12 +35,16 @@ export const storeBlob = async (id: string, blob: Blob): Promise<{success: boole
 		return new Promise((resolve) => {
 			const transaction = db.transaction(STORE_NAME, "readwrite");
 			const store = transaction.objectStore(STORE_NAME);
-			const request = store.put(blob, id);
+			store.put(blob, id);
 
-			request.onsuccess = () => resolve({success: true});
-			request.onerror = () => {
-				console.error("Failed to store blob:", request.error);
-				resolve({success: false, error: request.error?.message || "IndexedDB write failed"});
+			transaction.oncomplete = () => resolve({success: true});
+			transaction.onerror = () => {
+				console.error("Failed to store blob:", transaction.error);
+				resolve({success: false, error: transaction.error?.message || "IndexedDB write failed"});
+			};
+			transaction.onabort = () => {
+				console.error("IndexedDB transaction aborted");
+				resolve({success: false, error: "IndexedDB transaction aborted"});
 			};
 		});
 	} catch (error) {

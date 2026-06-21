@@ -289,6 +289,7 @@ export default function LayersSidebar({
 	const [isSnapping, setIsSnapping] = useState(false);
 	const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 	const positionRef = useRef<Position>({ x: 0, y: 0 });
+	const lastSaveToastAtRef = useRef(0);
 	const layerRefs = useRef<(HTMLDivElement | null)[]>([]);
 
 	// Motion spring values for smooth panel animation
@@ -484,28 +485,27 @@ export default function LayersSidebar({
 	// Load position from localStorage on mount
 	useEffect(() => {
 		if (typeof window !== "undefined") {
-			const savedPosition = localStorage.getItem(STORAGE_KEY);
-			if (savedPosition) {
-				try {
+			try {
+				const savedPosition = localStorage.getItem(STORAGE_KEY);
+				if (savedPosition) {
 					const parsed = JSON.parse(savedPosition) as Position;
 					const clamped = clampPositionToViewport(parsed);
 					setPosition(clamped);
 					positionRef.current = clamped;
 					motionX.set(clamped.x);
 					motionY.set(clamped.y);
-				} catch (error) {
-					console.error(
-						"Failed to load panel position from localStorage:",
-						error,
-					);
+				} else {
 					const rightPosition = getDropZonePosition("right");
 					setPosition(rightPosition);
 					positionRef.current = rightPosition;
 					motionX.set(rightPosition.x);
 					motionY.set(rightPosition.y);
 				}
-			} else {
-				// Set default position to "right" drop zone
+			} catch (error) {
+				console.error(
+					"Failed to load panel position from localStorage:",
+					error,
+				);
 				const rightPosition = getDropZonePosition("right");
 				setPosition(rightPosition);
 				positionRef.current = rightPosition;
@@ -522,9 +522,13 @@ export default function LayersSidebar({
 				localStorage.setItem(STORAGE_KEY, JSON.stringify(position));
 			} catch (error) {
 				console.error("Failed to save panel position to localStorage:", error);
-				toast.error("Failed to save panel position", {
-					description: "localStorage may be full or unavailable.",
-				});
+				const now = Date.now();
+				if (now - lastSaveToastAtRef.current > 3000) {
+					lastSaveToastAtRef.current = now;
+					toast.error("Failed to save panel position", {
+						description: "localStorage may be full or unavailable.",
+					});
+				}
 			}
 		}
 	}, [position, isSnapping]);
