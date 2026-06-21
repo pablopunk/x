@@ -14,6 +14,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/use-toast";
+import { toast as sonnerToast } from "sonner";
 import { useCanvasActions } from "@/hooks/use-canvas-actions";
 import { useHistory as useAnnotationHistory } from "@/hooks/use-history";
 import { useImageHistory } from "@/hooks/use-image-history";
@@ -1030,15 +1031,25 @@ export default function AnnotationCanvas() {
 
 	const saveCurrentAnnotationsToHistory = useCallback(async () => {
 		if (activeHistoryEntryId && mainImage && annotationHistory) {
-			await addOrUpdateHistoryEntryRef.current(
+			const result = await addOrUpdateHistoryEntryRef.current(
 				null,
 				annotationHistory.state,
 				activeHistoryEntryId,
 			);
+			if (result?.error) {
+				const now = Date.now();
+				if (now - lastStorageErrorToastRef.current > 5000) {
+					lastStorageErrorToastRef.current = now;
+					sonnerToast.error("Failed to save annotations", {
+						description: result.error,
+					});
+				}
+			}
 		}
 	}, [activeHistoryEntryId, mainImage, annotationHistory]);
 
 	const debouncedSaveAnnotationsRef = useRef<NodeJS.Timeout | null>(null);
+	const lastStorageErrorToastRef = useRef<number>(0);
 	useEffect(() => {
 		if (mainImage && activeHistoryEntryId) {
 			if (debouncedSaveAnnotationsRef.current) {
@@ -1153,13 +1164,23 @@ export default function AnnotationCanvas() {
 			setIsCanvasLoading(true);
 			try {
 				if (mainImage && activeHistoryEntryId) {
-					await addOrUpdateHistoryEntry(
+					const saveResult = await addOrUpdateHistoryEntry(
 						null,
 						annotationHistory.state,
 						activeHistoryEntryId,
 					);
+					if (saveResult?.error) {
+						sonnerToast.error("Failed to save current image", {
+							description: saveResult.error,
+						});
+					}
 				}
-				const newEntryMetadata = await addOrUpdateHistoryEntry(file, []);
+				const { entry: newEntryMetadata, error: newEntryError } = await addOrUpdateHistoryEntry(file, []);
+				if (newEntryError) {
+					sonnerToast.error("Failed to save uploaded image", {
+						description: newEntryError,
+					});
+				}
 				if (newEntryMetadata) {
 					const loadedEntry =
 						await loadAndActivateEntryFromMetadata(newEntryMetadata);
@@ -2048,17 +2069,27 @@ export default function AnnotationCanvas() {
 				.filter(Boolean) as Annotation[];
 
 			if (activeHistoryEntryId) {
-				await addOrUpdateHistoryEntry(
+				const saveResult = await addOrUpdateHistoryEntry(
 					null,
 					annotationHistory.state,
 					activeHistoryEntryId,
 				);
+				if (saveResult?.error) {
+					sonnerToast.error("Failed to save current image before crop", {
+						description: saveResult.error,
+					});
+				}
 			}
 
-			const newEntryMetadata = await addOrUpdateHistoryEntry(
+			const { entry: newEntryMetadata, error: cropError } = await addOrUpdateHistoryEntry(
 				file,
 				adjustAnnotations,
 			);
+			if (cropError) {
+				sonnerToast.error("Failed to save cropped image", {
+					description: cropError,
+				});
+			}
 			if (newEntryMetadata) {
 				const loadedEntry =
 					await loadAndActivateEntryFromMetadata(newEntryMetadata);
@@ -2075,6 +2106,9 @@ export default function AnnotationCanvas() {
 			}
 		} catch (error) {
 			console.error("Error cropping image:", error);
+			sonnerToast.error("Crop failed", {
+				description: error instanceof Error ? error.message : "Unknown error",
+			});
 		} finally {
 			setIsCanvasLoading(false);
 		}
@@ -2131,11 +2165,16 @@ export default function AnnotationCanvas() {
 				annotationHistory.state &&
 				activeHistoryEntryId !== entryId
 			) {
-				await addOrUpdateHistoryEntry(
+				const saveResult = await addOrUpdateHistoryEntry(
 					null,
 					annotationHistory.state,
 					activeHistoryEntryId,
 				);
+				if (saveResult?.error) {
+					sonnerToast.error("Failed to save current image", {
+						description: saveResult.error,
+					});
+				}
 			}
 			const loadedEntry = await loadHistoryEntry(entryId);
 			if (loadedEntry) {

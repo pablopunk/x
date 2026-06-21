@@ -5,6 +5,7 @@ import { deleteBlob, getBlob, storeBlob } from "@/lib/idb-helper";
 import { createThumbnail } from "@/lib/image-utils";
 import { isEqual } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 const MAX_HISTORY_ITEMS = 100;
 const LOCAL_STORAGE_KEY = "imageAnnotationHistoryLog";
@@ -39,13 +40,13 @@ export const useImageHistory = () => {
 
 	useEffect(() => {
 		setIsLoading(true);
-		try {
-			const storedLog = localStorage.getItem(LOCAL_STORAGE_KEY);
-			if (storedLog) {
+		const storedLog = localStorage.getItem(LOCAL_STORAGE_KEY);
+		if (storedLog) {
+			try {
 				setHistoryLog(JSON.parse(storedLog));
+			} catch (error) {
+				console.error("Failed to parse history from localStorage:", error);
 			}
-		} catch (error) {
-			console.error("Failed to load history from localStorage:", error);
 		}
 		// setIsLoading(false) handled by sync effect
 	}, []);
@@ -157,6 +158,9 @@ export const useImageHistory = () => {
 				localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(log));
 			} catch (error) {
 				console.error("Failed to save history to localStorage:", error);
+				toast.error("Failed to save history", {
+					description: "localStorage may be full or unavailable.",
+				});
 			}
 		},
 		[],
@@ -166,7 +170,6 @@ export const useImageHistory = () => {
 		async (
 			entryMetadata: ImageHistoryEntryMetadata,
 		): Promise<{ image: HTMLImageElement } | null> => {
-			// This function inherently involves loading, so it's okay if it's part of a flow that sets isLoading.
 			try {
 				const imageBlob = await getBlob(entryMetadata.imageId);
 				if (!imageBlob) {
@@ -209,7 +212,7 @@ export const useImageHistory = () => {
 			imageFile: File | null,
 			annotations: Annotation[],
 			existingEntryId?: string | null,
-		): Promise<ImageHistoryEntryMetadata | null> => {
+		): Promise<{entry: ImageHistoryEntryMetadata | null; error?: string}> => {
 			const isAnnotationOnlyUpdate = !imageFile && !!existingEntryId;
 
 			const currentLogSnapshot = [...historyLog];
@@ -217,17 +220,15 @@ export const useImageHistory = () => {
 				? currentLogSnapshot.findIndex((e) => e.id === existingEntryId)
 				: -1;
 
-			// If this is an annotation-only update, check if the annotations have actually changed.
 			if (isAnnotationOnlyUpdate && existingEntryIndex !== -1) {
 				const oldEntry = currentLogSnapshot[existingEntryIndex];
-				// Use efficient equality check instead of JSON.stringify
 				if (isEqual(oldEntry.annotations, annotations)) {
-					return oldEntry; // Abort the save and return the existing data.
+					return {entry: oldEntry};
 				}
 			}
 
 			if (!isAnnotationOnlyUpdate) {
-				setIsLoading(true); // Only set global loading for new/replacement image operations
+				setIsLoading(true);
 			}
 
 			let newEntryMetadata: ImageHistoryEntryMetadata;
@@ -239,11 +240,7 @@ export const useImageHistory = () => {
 				let thumbnailId = "";
 				let originalImageName = imageFile?.name;
 
-				// const currentLogSnapshot = [...historyLog] // This is already defined above
-				// const existingEntryIndex = existingEntryId ? currentLogSnapshot.findIndex((e) => e.id === existingEntryId) : -1 // This is also defined above
-
 				if (imageFile) {
-					// New image or replacing image
 					imageId = `img_${entryId}`;
 					thumbnailId = `thumb_${entryId}`;
 					if (existingEntryIndex !== -1) {
@@ -261,20 +258,27 @@ export const useImageHistory = () => {
 						}
 					}
 					const imageBlob = new Blob([imageFile], { type: imageFile.type });
-					await storeBlob(imageId, imageBlob);
+					const imageResult = await storeBlob(imageId, imageBlob);
+					if (!imageResult.success) {
+						if (!isAnnotationOnlyUpdate) setIsLoading(false);
+						return {entry: null, error: imageResult.error || "Failed to store image"};
+					}
 					const thumbBlob = await createThumbnail(
 						imageBlob,
 						THUMBNAIL_WIDTH,
 						THUMBNAIL_HEIGHT,
 					);
-					await storeBlob(thumbnailId, thumbBlob);
+					const thumbResult = await storeBlob(thumbnailId, thumbBlob);
+					if (!thumbResult.success) {
+						if (!isAnnotationOnlyUpdate) setIsLoading(false);
+						return {entry: null, error: thumbResult.error || "Failed to store thumbnail"};
+					}
 					const newThumbUrl = URL.createObjectURL(thumbBlob);
 					setThumbnailCache((prev) => ({
 						...prev,
 						[thumbnailId]: newThumbUrl,
 					}));
 				} else if (existingEntryIndex !== -1) {
-					// Annotation-only update
 					const existing = currentLogSnapshot[existingEntryIndex];
 					imageId = existing.imageId;
 					thumbnailId = existing.thumbnailId;
@@ -284,7 +288,7 @@ export const useImageHistory = () => {
 						"Cannot update history: No image file and no existing entry ID.",
 					);
 					if (!isAnnotationOnlyUpdate) setIsLoading(false);
-					return null;
+					return {entry: null, error: "No image file and no existing entry ID"};
 				}
 
 				newEntryMetadata = {
@@ -331,13 +335,13 @@ export const useImageHistory = () => {
 						});
 					});
 				}
-				return newEntryMetadata;
+				return {entry: newEntryMetadata};
 			} catch (error) {
 				console.error("Failed to save history entry:", error);
-				return null;
+				return {entry: null, error: error instanceof Error ? error.message : "Unknown error"};
 			} finally {
 				if (!isAnnotationOnlyUpdate) {
-					// setIsLoading(false) // Let the sync effect triggered by setHistoryLog handle this
+					// Let the sync effect triggered by setHistoryLog handle this
 				}
 			}
 		},
@@ -348,7 +352,7 @@ export const useImageHistory = () => {
 		async (
 			entryMetadata: ImageHistoryEntryMetadata,
 		): Promise<LoadedHistoryEntry | null> => {
-			setIsLoading(true); // This is a significant load operation
+			setIsLoading(true);
 			try {
 				const imageData = await loadImageDataFromMetadata(entryMetadata);
 				if (!imageData) {
@@ -379,7 +383,6 @@ export const useImageHistory = () => {
 
 	const loadHistoryEntry = useCallback(
 		async (entryId: string): Promise<LoadedHistoryEntry | null> => {
-			// This function itself doesn't set isLoading, it calls loadAndActivateEntryFromMetadata which does.
 			const entryMetadata = historyLog.find((e) => e.id === entryId);
 			if (!entryMetadata) {
 				console.warn(
@@ -394,11 +397,11 @@ export const useImageHistory = () => {
 
 	const deleteHistoryEntry = useCallback(
 		async (entryId: string) => {
-			setIsLoading(true); // Deletion can involve DB ops and affect UI, so show loader
+			setIsLoading(true);
 			const entryToDelete = historyLog.find((e) => e.id === entryId);
 
 			const newHistoryLog = historyLog.filter((e) => e.id !== entryId);
-			setHistoryLog(newHistoryLog); // This will trigger sync effect which will set isLoading(false)
+			setHistoryLog(newHistoryLog);
 			saveHistoryLogToLocalStorage(newHistoryLog);
 
 			if (entryToDelete) {
@@ -416,7 +419,6 @@ export const useImageHistory = () => {
 			if (activeHistoryEntryId === entryId) {
 				setActiveHistoryEntryId(null);
 			}
-			// setIsLoading(false) will be handled by the sync effect after historyLog updates
 		},
 		[historyLog, activeHistoryEntryId, saveHistoryLogToLocalStorage],
 	);

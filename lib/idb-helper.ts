@@ -29,19 +29,28 @@ const initDB = (): Promise<IDBDatabase> => {
 	return dbPromise;
 };
 
-export const storeBlob = async (id: string, blob: Blob): Promise<void> => {
-	const db = await initDB();
-	return new Promise((resolve, reject) => {
-		const transaction = db.transaction(STORE_NAME, "readwrite");
-		const store = transaction.objectStore(STORE_NAME);
-		const request = store.put(blob, id);
+export const storeBlob = async (id: string, blob: Blob): Promise<{success: boolean; error?: string}> => {
+	try {
+		const db = await initDB();
+		return new Promise((resolve) => {
+			const transaction = db.transaction(STORE_NAME, "readwrite");
+			const store = transaction.objectStore(STORE_NAME);
+			store.put(blob, id);
 
-		request.onsuccess = () => resolve();
-		request.onerror = () => {
-			console.error("Failed to store blob:", request.error);
-			reject(request.error);
-		};
-	});
+			transaction.oncomplete = () => resolve({success: true});
+			transaction.onerror = () => {
+				console.error("Failed to store blob:", transaction.error);
+				resolve({success: false, error: transaction.error?.message || "IndexedDB write failed"});
+			};
+			transaction.onabort = () => {
+				console.error("IndexedDB transaction aborted");
+				resolve({success: false, error: "IndexedDB transaction aborted"});
+			};
+		});
+	} catch (error) {
+		console.error("Failed to store blob:", error);
+		return {success: false, error: error instanceof Error ? error.message : "Unknown storage error"};
+	}
 };
 
 export const getBlob = async (id: string): Promise<Blob | null> => {
