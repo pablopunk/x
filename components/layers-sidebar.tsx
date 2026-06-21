@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { motion, useMotionValue, useSpring } from "motion/react";
 import React, { useState, useCallback, useEffect, useRef, memo } from "react";
+import { toast } from "sonner";
 
 // Constants
 const PANEL_WIDTH = 352; // w-[22rem] = 352px
@@ -483,28 +484,28 @@ export default function LayersSidebar({
 	// Load position from localStorage on mount
 	useEffect(() => {
 		if (typeof window !== "undefined") {
-			try {
-				const savedPosition = localStorage.getItem(STORAGE_KEY);
-				if (savedPosition) {
+			const savedPosition = localStorage.getItem(STORAGE_KEY);
+			if (savedPosition) {
+				try {
 					const parsed = JSON.parse(savedPosition) as Position;
 					const clamped = clampPositionToViewport(parsed);
 					setPosition(clamped);
 					positionRef.current = clamped;
 					motionX.set(clamped.x);
 					motionY.set(clamped.y);
-				} else {
-					// Set default position to "right" drop zone
+				} catch (error) {
+					console.error(
+						"Failed to load panel position from localStorage:",
+						error,
+					);
 					const rightPosition = getDropZonePosition("right");
 					setPosition(rightPosition);
 					positionRef.current = rightPosition;
 					motionX.set(rightPosition.x);
 					motionY.set(rightPosition.y);
 				}
-			} catch (error) {
-				console.error(
-					"Failed to load panel position from localStorage:",
-					error,
-				);
+			} else {
+				// Set default position to "right" drop zone
 				const rightPosition = getDropZonePosition("right");
 				setPosition(rightPosition);
 				positionRef.current = rightPosition;
@@ -521,6 +522,9 @@ export default function LayersSidebar({
 				localStorage.setItem(STORAGE_KEY, JSON.stringify(position));
 			} catch (error) {
 				console.error("Failed to save panel position to localStorage:", error);
+				toast.error("Failed to save panel position", {
+					description: "localStorage may be full or unavailable.",
+				});
 			}
 		}
 	}, [position, isSnapping]);
