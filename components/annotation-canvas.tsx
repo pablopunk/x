@@ -269,9 +269,10 @@ function measureTextAnnotation(
 	const lineHeight = annotation.fontSize * TEXT_LINE_HEIGHT;
 	ctx.save();
 	ctx.font = `${annotation.fontSize}px ${annotation.fontFamily}`;
+	// Use zero-width space for empty lines to get accurate height without adding width
 	const textWidth = Math.max(
 		1,
-		...lines.map((line) => ctx.measureText(line || " ").width),
+		...lines.map((line) => ctx.measureText(line || "\u200B").width),
 	);
 	ctx.restore();
 
@@ -383,6 +384,8 @@ export default function AnnotationCanvas() {
 	const canvasContainerRef = useRef<HTMLDivElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const gestureZoomStartRef = useRef(1);
+	const textInputOpenTimeRef = useRef<number>(0);
+	const textInputTriggerTargetRef = useRef<EventTarget | null>(null);
 	const [zoom, setZoom] = useState(1);
 
 	const clampZoom = useCallback((nextZoom: number) => {
@@ -470,11 +473,13 @@ export default function AnnotationCanvas() {
 		[annotationHistory.state],
 	);
 
-	const openTextEditor = useCallback((annotation: TextAnnotation) => {
+	const openTextEditor = useCallback((annotation: TextAnnotation, triggerTarget?: EventTarget | null) => {
 		setSelectedAnnotationId(annotation.id);
 		setEditingTextAnnotationId(annotation.id);
 		setTextInputPosition({ x: annotation.x, y: annotation.y });
 		setCurrentText(annotation.text);
+		textInputOpenTimeRef.current = Date.now();
+		textInputTriggerTargetRef.current = triggerTarget ?? null;
 	}, []);
 
 	useEffect(() => {
@@ -1144,6 +1149,9 @@ export default function AnnotationCanvas() {
 	useEffect(() => {
 		if (!textInputPosition) return;
 		function handleClickOutside(event: MouseEvent) {
+			// Ignore the same mousedown event that opened the text input
+			// by comparing the event target with the trigger target
+			if (event.target === textInputTriggerTargetRef.current) return;
 			if (
 				textCardRef.current &&
 				!textCardRef.current.contains(event.target as Node)
@@ -1529,10 +1537,15 @@ export default function AnnotationCanvas() {
 		setSelectedAnnotationId(null);
 		setResizeState(null);
 		if (currentTool === "text") {
+			e.stopPropagation();
+			e.preventDefault();
 			setEditingTextAnnotationId(null);
 			setTextInputPosition(pos);
 			setCurrentText("");
 			setIsDrawing(false);
+			textInputOpenTimeRef.current = Date.now();
+			textInputTriggerTargetRef.current = e.target;
+			return
 		} else {
 			setIsDrawing(true);
 			setStartPoint(pos);
@@ -1578,16 +1591,13 @@ export default function AnnotationCanvas() {
 						if (anno.type === "text") {
 							const canvas = canvasRef.current;
 							const ctx = canvas?.getContext("2d");
-							const nextFontSize = Math.max(
-								8,
-								Math.round(
-									resizedBounds.height /
-										Math.max(
-											1,
-											getTextLines(anno.text).length * TEXT_LINE_HEIGHT,
-										),
-								),
-							);
+
+							// Calculate target font size based on proportional resize from original
+							const originalLineCount = Math.max(1, getTextLines(anno.text).length);
+							const originalContentHeight = originalLineCount * anno.fontSize * TEXT_LINE_HEIGHT;
+							const heightScale = resizedBounds.height / Math.max(1, originalContentHeight);
+							const nextFontSize = Math.max(8, Math.round(anno.fontSize * heightScale));
+							
 							let measuredWidth = resizedBounds.width;
 							let measuredHeight = resizedBounds.height;
 
@@ -1941,7 +1951,7 @@ export default function AnnotationCanvas() {
 				(anno) => anno.id === annotationId,
 			);
 			if (!annotation || annotation.type !== "text") return;
-			openTextEditor(annotation);
+			openTextEditor(annotation, null);
 		},
 		[annotationHistory.state, openTextEditor],
 	);
@@ -1950,7 +1960,7 @@ export default function AnnotationCanvas() {
 		if (currentTool !== "cursor" || !mainImage) return;
 		const annotation = getAnnotationAtPoint(getMousePosition(e));
 		if (!annotation || annotation.type !== "text") return;
-		openTextEditor(annotation);
+		openTextEditor(annotation, e.target);
 		setIsDraggingAnnotation(false);
 		setDragOffset(null);
 		setStartPoint(null);
@@ -2119,12 +2129,11 @@ export default function AnnotationCanvas() {
 			setCurrentTool(tool);
 			if (tool !== "cursor") setSelectedAnnotationId(null);
 			if (textInputPosition && tool !== "text") {
-				setEditingTextAnnotationId(null);
-				setTextInputPosition(null);
-				setCurrentText("");
+				// Save the text annotation before switching tools
+				handleTextSubmit();
 			}
 		},
-		[textInputPosition],
+		[textInputPosition, handleTextSubmit],
 	);
 
 	const toolList: {
@@ -2320,7 +2329,7 @@ export default function AnnotationCanvas() {
 		if (!ctx || !textInputPosition) return null;
 
 		return measureTextAnnotation(ctx, {
-			text: currentText || " ",
+			text: currentText || "",
 			fontSize,
 			fontFamily,
 			backgroundColor: useTextBackground ? textBackgroundColor : undefined,
@@ -2625,7 +2634,10 @@ export default function AnnotationCanvas() {
 								onMouseMove={handleMouseMove}
 								onMouseUp={handleMouseUp}
 								onMouseLeave={handleMouseUp}
-								className="block h-full w-full max-w-none"
+								onTouchStart={handleTouchStart}
+								onTouchMove={handleTouchMove}
+								onTouchEnd={handleTouchEnd}
+								className="block h-full w-full max-w-none touch-none"
 								style={{ visibility: "visible" }}
 							/>
 						</div>
@@ -2706,22 +2718,24 @@ export default function AnnotationCanvas() {
 								className="w-full resize-none overflow-hidden border border-dashed border-blue-500/70 bg-transparent p-0 focus-visible:ring-0 focus-visible:ring-offset-0"
 								style={{
 									color: strokeColor,
-									fontSize: `${fontSize}px`,
+									fontSize: `${fontSize * zoom}px`,
 									lineHeight: TEXT_LINE_HEIGHT,
 									fontFamily,
 									backgroundColor: useTextBackground
 										? textBackgroundColor
 										: "transparent",
 									textShadow: useTextShadow
-										? `${textShadowOffsetX}px ${textShadowOffsetY}px ${textShadowBlur}px ${textShadowColor}`
+										? `${textShadowOffsetX * zoom}px ${textShadowOffsetY * zoom}px ${textShadowBlur * zoom}px ${textShadowColor}`
 										: "none",
 									WebkitTextStroke:
 										textStrokeWidth > 0
-											? `${textStrokeWidth}px ${textStrokeColor}`
+											? `${textStrokeWidth * zoom}px ${textStrokeColor}`
 											: undefined,
 									width: editingTextLayout
 										? `${editingTextLayout.width * zoom}px`
-										: undefined,
+										: editingTextAnnotation
+											? `${editingTextAnnotation.width * zoom}px`
+											: undefined,
 									height: editingTextLayout
 										? `${editingTextLayout.height * zoom}px`
 										: editingTextAnnotation
