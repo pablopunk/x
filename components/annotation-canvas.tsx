@@ -1202,6 +1202,11 @@ export default function AnnotationCanvas() {
 							canvas.height = loadedEntry.image.height;
 						}
 					} else {
+						toast({
+							variant: "destructive",
+							title: "Image upload failed",
+							description: `The uploaded file "${file.name}" could not be loaded as an image.`,
+						});
 						setMainImage(null);
 						annotationHistory.reset([]);
 					}
@@ -1887,6 +1892,40 @@ export default function AnnotationCanvas() {
 		setStartPoint(null);
 		setCurrentEndPoint(null);
 		setCurrentHighlightPoints([]);
+	};
+
+	const createTouchMouseEvent = (
+		touch: React.Touch,
+		baseEvent: React.TouchEvent<HTMLCanvasElement>,
+	): React.MouseEvent<HTMLCanvasElement> =>
+		({
+			clientX: touch.clientX,
+			clientY: touch.clientY,
+			target: baseEvent.target,
+			currentTarget: baseEvent.currentTarget,
+			preventDefault: () => baseEvent.preventDefault(),
+			stopPropagation: () => baseEvent.stopPropagation(),
+			shiftKey: baseEvent.shiftKey,
+			ctrlKey: baseEvent.ctrlKey,
+			metaKey: baseEvent.metaKey,
+		} as React.MouseEvent<HTMLCanvasElement>);
+
+	const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+		const touch = e.touches[0];
+		if (!touch) return;
+		handleMouseDown(createTouchMouseEvent(touch, e));
+	};
+
+	const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+		const touch = e.touches[0] ?? e.changedTouches[0];
+		if (!touch) return;
+		handleMouseMove(createTouchMouseEvent(touch, e));
+	};
+
+	const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+		e.preventDefault();
+		e.stopPropagation();
+		handleMouseUp();
 	};
 
 	const handleTextSubmit = () => {
