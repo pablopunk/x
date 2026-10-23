@@ -64,6 +64,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const RESIZE_HANDLE_SIZE = 10;
 const RESIZE_HANDLE_HIT_RADIUS = 12;
+const MIN_TEXT_EDITOR_WIDTH = 220;
 const MIN_IMAGE_LAYER_SIZE = 24;
 const MIN_CANVAS_ZOOM = 0.25;
 const MAX_CANVAS_ZOOM = 8;
@@ -73,6 +74,15 @@ const TEXT_BACKGROUND_PADDING_X = 8;
 const TEXT_BACKGROUND_PADDING_Y = 4;
 
 type ResizeHandle = "nw" | "ne" | "sw" | "se";
+
+interface CanvasPointerEvent {
+	clientX: number;
+	clientY: number;
+	target: EventTarget | null;
+	shiftKey: boolean;
+	preventDefault: () => void;
+	stopPropagation: () => void;
+}
 
 type CornerResizableAnnotation =
 	| EllipseAnnotation
@@ -1440,7 +1450,9 @@ export default function AnnotationCanvas() {
 		handleImageUpload,
 		toast,
 	]);
-	const getMousePosition = (e: React.MouseEvent): Point => {
+	const getMousePosition = (
+		e: Pick<CanvasPointerEvent, "clientX" | "clientY">,
+	): Point => {
 		const canvas = canvasRef.current;
 		if (!canvas) return { x: 0, y: 0 };
 		const rect = canvas.getBoundingClientRect();
@@ -1483,7 +1495,7 @@ export default function AnnotationCanvas() {
 		[],
 	);
 
-	const handleMouseDown = (e: React.MouseEvent) => {
+	const handleMouseDown = (e: CanvasPointerEvent) => {
 		if (
 			!mainImage ||
 			(textInputPosition && textCardRef.current?.contains(e.target as Node))
@@ -1554,7 +1566,7 @@ export default function AnnotationCanvas() {
 		}
 	};
 
-	const handleMouseMove = (e: React.MouseEvent) => {
+	const handleMouseMove = (e: CanvasPointerEvent) => {
 		if (!mainImage || (!isDrawing && !isDraggingAnnotation && !resizeState))
 			return;
 		const pos = getMousePosition(e);
@@ -1888,6 +1900,32 @@ export default function AnnotationCanvas() {
 		setCurrentEndPoint(null);
 		setCurrentHighlightPoints([]);
 	};
+
+	const getTouchPointerEvent = (
+		e: React.TouchEvent<HTMLCanvasElement>,
+		touch: Pick<React.Touch, "clientX" | "clientY">,
+	): CanvasPointerEvent => ({
+		clientX: touch.clientX,
+		clientY: touch.clientY,
+		target: e.target,
+		shiftKey: false,
+		preventDefault: () => e.preventDefault(),
+		stopPropagation: () => e.stopPropagation(),
+	});
+
+	const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+		const touch = e.changedTouches[0];
+		if (!touch) return;
+		handleMouseDown(getTouchPointerEvent(e, touch));
+	};
+
+	const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+		const touch = e.touches[0];
+		if (!touch) return;
+		handleMouseMove(getTouchPointerEvent(e, touch));
+	};
+
+	const handleTouchEnd = () => handleMouseUp();
 
 	const handleTextSubmit = () => {
 		if (!textInputPosition || !currentText.trim()) {
@@ -2351,6 +2389,10 @@ export default function AnnotationCanvas() {
 		useTextBackground,
 		useTextShadow,
 	]);
+	const editingTextWidth = Math.max(
+		MIN_TEXT_EDITOR_WIDTH,
+		editingTextLayout?.width ?? editingTextAnnotation?.width ?? fontSize * 6,
+	);
 	const activeToolType: Tool =
 		currentTool === "cursor" && selectedAnno ? selectedAnno.type : currentTool;
 	const canvasDisplayWidth = mainImage?.width ?? 600;
@@ -2637,6 +2679,7 @@ export default function AnnotationCanvas() {
 								onTouchStart={handleTouchStart}
 								onTouchMove={handleTouchMove}
 								onTouchEnd={handleTouchEnd}
+								onTouchCancel={handleTouchEnd}
 								className="block h-full w-full max-w-none touch-none"
 								style={{ visibility: "visible" }}
 							/>
@@ -2671,11 +2714,7 @@ export default function AnnotationCanvas() {
 										canvasDisplayXInContainer + clickXOnDisplayedCanvas;
 									const cardTop =
 										canvasDisplayYInContainer + clickYOnDisplayedCanvas;
-									const baseWidth = editingTextLayout
-										? editingTextLayout.width * currentDisplayScaleX
-										: editingTextAnnotation
-											? editingTextAnnotation.width * currentDisplayScaleX
-											: Math.max(220, fontSize * 6 * currentDisplayScaleX);
+									const baseWidth = editingTextWidth * currentDisplayScaleX;
 									const baseHeight = editingTextLayout
 										? editingTextLayout.height * currentDisplayScaleY
 										: editingTextAnnotation
@@ -2731,11 +2770,7 @@ export default function AnnotationCanvas() {
 										textStrokeWidth > 0
 											? `${textStrokeWidth * zoom}px ${textStrokeColor}`
 											: undefined,
-									width: editingTextLayout
-										? `${editingTextLayout.width * zoom}px`
-										: editingTextAnnotation
-											? `${editingTextAnnotation.width * zoom}px`
-											: undefined,
+									width: `${editingTextWidth * zoom}px`,
 									height: editingTextLayout
 										? `${editingTextLayout.height * zoom}px`
 										: editingTextAnnotation
