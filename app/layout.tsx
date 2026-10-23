@@ -99,7 +99,12 @@ export default function RootLayout({
 										console.log('SW registration failed: ', registrationError);
 									});
 								navigator.serviceWorker.addEventListener('controllerchange', function() {
-									if (hadController) {
+									if (
+										hadController &&
+										window.confirm(
+											'A new version is available. Save your work before reloading. Reload now?',
+										)
+									) {
 										window.location.reload();
 									}
 								});
