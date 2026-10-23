@@ -11,6 +11,49 @@ const MAX_HISTORY_ITEMS = 100;
 const LOCAL_STORAGE_KEY = "imageAnnotationHistoryLog";
 const THUMBNAIL_WIDTH = 250;
 const THUMBNAIL_HEIGHT = 187;
+const PROJECT_FORMAT = "x-image-annotation-project";
+const PROJECT_VERSION = 1;
+
+interface ProjectEntry {
+	originalImageName?: string;
+	imageData: string;
+	annotations: Annotation[];
+	lastModified: number;
+}
+
+interface ProjectDocument {
+	format: typeof PROJECT_FORMAT;
+	version: typeof PROJECT_VERSION;
+	exportedAt: string;
+	entries: ProjectEntry[];
+}
+
+const blobToDataUrl = (blob: Blob): Promise<string> =>
+	new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => {
+			if (typeof reader.result === "string") {
+				resolve(reader.result);
+			} else {
+				reject(new Error("Failed to encode image data"));
+			}
+		};
+		reader.onerror = () => reject(reader.error ?? new Error("Failed to read image data"));
+		reader.readAsDataURL(blob);
+	});
+
+const dataUrlToImageBlob = async (dataUrl: string): Promise<Blob> => {
+	if (!dataUrl.startsWith("data:image/")) {
+		throw new Error("Project entry does not contain an image");
+	}
+	const response = await fetch(dataUrl);
+	if (!response.ok) throw new Error("Failed to decode project image");
+	const blob = await response.blob();
+	if (!blob.type.startsWith("image/")) {
+		throw new Error("Project entry does not contain an image");
+	}
+	return blob;
+};
 
 export interface ImageHistoryEntryMetadata {
 	id: string;
@@ -423,6 +466,142 @@ export const useImageHistory = () => {
 		[historyLog, activeHistoryEntryId, saveHistoryLogToLocalStorage],
 	);
 
+	const exportProject = useCallback(
+		async (
+			activeEntryId: string,
+			activeAnnotations: Annotation[],
+		): Promise<Blob> => {
+			const entries = await Promise.all(
+				historyLog.map(async (entry) => {
+					const imageBlob = await getBlob(entry.imageId);
+					if (!imageBlob) {
+						throw new Error(
+							`Image data is missing for ${entry.originalImageName || "a project image"}`,
+						);
+					}
+					return {
+						originalImageName: entry.originalImageName,
+						imageData: await blobToDataUrl(imageBlob),
+						annotations:
+							entry.id === activeEntryId
+								? activeAnnotations
+								: entry.annotations,
+						lastModified: entry.lastModified,
+					};
+				}),
+			);
+			const document: ProjectDocument = {
+				format: PROJECT_FORMAT,
+				version: PROJECT_VERSION,
+				exportedAt: new Date().toISOString(),
+				entries,
+			};
+			return new Blob([JSON.stringify(document)], {
+				type: "application/json",
+			});
+		},
+		[historyLog],
+	);
+
+	const importProject = useCallback(
+		async (
+			file: File,
+			currentEntryOverride?: ImageHistoryEntryMetadata,
+		): Promise<ImageHistoryEntryMetadata> => {
+			const parsedProject = JSON.parse(await file.text()) as ProjectDocument;
+			if (
+				parsedProject?.format !== PROJECT_FORMAT ||
+				parsedProject.version !== PROJECT_VERSION ||
+				!Array.isArray(parsedProject.entries) ||
+				parsedProject.entries.length === 0 ||
+				parsedProject.entries.length > MAX_HISTORY_ITEMS
+			) {
+				throw new Error("This is not a supported .x project file");
+			}
+
+			const importedEntries: ImageHistoryEntryMetadata[] = [];
+			const storedBlobIds: string[] = [];
+			const importedThumbnailUrls: Record<string, string> = {};
+			try {
+				for (const projectEntry of parsedProject.entries) {
+					if (
+						!projectEntry ||
+						typeof projectEntry.imageData !== "string" ||
+						!Array.isArray(projectEntry.annotations)
+					) {
+						throw new Error("The project contains an invalid image entry");
+					}
+
+					const entryId =
+						`project_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+					const imageId = `img_${entryId}`;
+					const thumbnailId = `thumb_${entryId}`;
+					const imageBlob = await dataUrlToImageBlob(projectEntry.imageData);
+					const imageResult = await storeBlob(imageId, imageBlob);
+					if (!imageResult.success) {
+						throw new Error(imageResult.error || "Failed to store project image");
+					}
+					storedBlobIds.push(imageId);
+
+					const thumbnailBlob = await createThumbnail(
+						imageBlob,
+						THUMBNAIL_WIDTH,
+						THUMBNAIL_HEIGHT,
+					);
+					const thumbnailResult = await storeBlob(thumbnailId, thumbnailBlob);
+					if (!thumbnailResult.success) {
+						throw new Error(
+							thumbnailResult.error || "Failed to store project thumbnail",
+						);
+					}
+					storedBlobIds.push(thumbnailId);
+					importedThumbnailUrls[thumbnailId] =
+						URL.createObjectURL(thumbnailBlob);
+
+					importedEntries.push({
+						id: entryId,
+						originalImageName:
+							typeof projectEntry.originalImageName === "string"
+								? projectEntry.originalImageName
+								: undefined,
+						imageId,
+						thumbnailId,
+						annotations: projectEntry.annotations,
+						lastModified:
+							typeof projectEntry.lastModified === "number" &&
+							Number.isFinite(projectEntry.lastModified)
+								? projectEntry.lastModified
+								: Date.now(),
+					});
+				}
+			} catch (error) {
+				await Promise.allSettled(storedBlobIds.map((id) => deleteBlob(id)));
+				for (const url of Object.values(importedThumbnailUrls)) {
+					URL.revokeObjectURL(url);
+				}
+				throw error;
+			}
+
+			const existingEntries = currentEntryOverride
+				? [
+						currentEntryOverride,
+						...historyLog.filter(
+							(entry) => entry.id !== currentEntryOverride.id,
+						),
+					]
+				: historyLog;
+			const updatedLog = [...importedEntries, ...existingEntries];
+			setHistoryLog(updatedLog);
+			saveHistoryLogToLocalStorage(updatedLog);
+			setThumbnailCache((currentCache) => ({
+				...currentCache,
+				...importedThumbnailUrls,
+			}));
+			return importedEntries[0];
+		},
+		[historyLog, saveHistoryLogToLocalStorage],
+	);
+
 	return {
 		historyLog,
 		isLoadingHistory: isLoading,
@@ -431,6 +610,8 @@ export const useImageHistory = () => {
 		loadHistoryEntry,
 		loadAndActivateEntryFromMetadata,
 		deleteHistoryEntry,
+		exportProject,
+		importProject,
 		thumbnailCache,
 		setActiveHistoryEntryId,
 	};

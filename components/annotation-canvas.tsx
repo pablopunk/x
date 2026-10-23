@@ -17,7 +17,10 @@ import { useToast } from "@/components/ui/use-toast";
 import { toast as sonnerToast } from "sonner";
 import { useCanvasActions } from "@/hooks/use-canvas-actions";
 import { useHistory as useAnnotationHistory } from "@/hooks/use-history";
-import { useImageHistory } from "@/hooks/use-image-history";
+import {
+	type ImageHistoryEntryMetadata,
+	useImageHistory,
+} from "@/hooks/use-image-history";
 import {
 	type Annotation,
 	type ArrowAnnotation,
@@ -41,6 +44,7 @@ import {
 	Circle,
 	Copy,
 	Crop,
+	Download,
 	Eraser,
 	Eye,
 	Github,
@@ -54,6 +58,7 @@ import {
 	Trash2,
 	Type,
 	Undo2,
+	Upload,
 	ZoomIn,
 	ZoomOut,
 } from "lucide-react";
@@ -328,6 +333,8 @@ export default function AnnotationCanvas() {
 		loadHistoryEntry,
 		loadAndActivateEntryFromMetadata,
 		deleteHistoryEntry,
+		exportProject,
+		importProject,
 		thumbnailCache,
 	} = useImageHistory();
 
@@ -383,6 +390,7 @@ export default function AnnotationCanvas() {
 	const textCardRef = useRef<HTMLDivElement>(null);
 	const canvasContainerRef = useRef<HTMLDivElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const projectFileInputRef = useRef<HTMLInputElement>(null);
 	const gestureZoomStartRef = useRef(1);
 	const textInputOpenTimeRef = useRef<number>(0);
 	const textInputTriggerTargetRef = useRef<EventTarget | null>(null);
@@ -1230,6 +1238,102 @@ export default function AnnotationCanvas() {
 		if (e.target.files?.[0]) {
 			handleImageUpload(e.target.files[0]);
 		}
+	};
+
+	const handleProjectExport = useCallback(async () => {
+		if (!mainImage || !activeHistoryEntryId) return;
+		try {
+			const saveResult = await addOrUpdateHistoryEntry(
+				null,
+				annotationHistory.state,
+				activeHistoryEntryId,
+			);
+			if (saveResult.error || !saveResult.entry) {
+				throw new Error(saveResult.error || "Failed to save current annotations");
+			}
+
+			const projectBlob = await exportProject(
+				activeHistoryEntryId,
+				annotationHistory.state,
+			);
+			const downloadUrl = URL.createObjectURL(projectBlob);
+			const link = document.createElement("a");
+			link.href = downloadUrl;
+			link.download = `x-project-${new Date().toISOString().slice(0, 10)}.x`;
+			link.click();
+			window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+			sonnerToast.success("Project exported");
+		} catch (error) {
+			sonnerToast.error("Failed to export project", {
+				description:
+					error instanceof Error ? error.message : "Unknown export error",
+			});
+		}
+	}, [
+		mainImage,
+		activeHistoryEntryId,
+		addOrUpdateHistoryEntry,
+		annotationHistory,
+		exportProject,
+	]);
+
+	const handleProjectImport = useCallback(
+		async (file: File) => {
+			setIsCanvasLoading(true);
+			try {
+			let currentEntryOverride: ImageHistoryEntryMetadata | undefined;
+				if (mainImage && activeHistoryEntryId) {
+					const saveResult = await addOrUpdateHistoryEntry(
+						null,
+						annotationHistory.state,
+						activeHistoryEntryId,
+					);
+					if (saveResult.error || !saveResult.entry) {
+						throw new Error(
+							saveResult.error || "Failed to save current annotations",
+						);
+					}
+					currentEntryOverride = saveResult.entry;
+				}
+
+				const importedEntry = await importProject(file, currentEntryOverride);
+				const loadedEntry =
+					await loadAndActivateEntryFromMetadata(importedEntry);
+				if (!loadedEntry) throw new Error("Failed to load imported project image");
+				setMainImage(loadedEntry.image);
+				annotationHistory.reset(loadedEntry.annotations);
+				setSelectedAnnotationId(null);
+				const canvas = canvasRef.current;
+				if (canvas) {
+					canvas.width = loadedEntry.image.width;
+					canvas.height = loadedEntry.image.height;
+				}
+				sonnerToast.success("Project imported", {
+					description: `${importedEntry.originalImageName || "Project image"} is ready.`,
+				});
+			} catch (error) {
+				sonnerToast.error("Failed to import project", {
+					description:
+						error instanceof Error ? error.message : "Unknown import error",
+				});
+			} finally {
+				setIsCanvasLoading(false);
+			}
+		},
+		[
+			mainImage,
+			activeHistoryEntryId,
+			addOrUpdateHistoryEntry,
+			annotationHistory,
+			importProject,
+			loadAndActivateEntryFromMetadata,
+		],
+	);
+
+	const handleProjectFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		e.target.value = "";
+		if (file) void handleProjectImport(file);
 	};
 
 	const handleImageAsLayer = async (file: File) => {
@@ -2512,6 +2616,39 @@ export default function AnnotationCanvas() {
 							</TooltipTrigger>
 							<TooltipContent>View on GitHub</TooltipContent>
 						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={handleProjectExport}
+									disabled={
+										!mainImage ||
+										!activeHistoryEntryId ||
+										isCanvasLoading ||
+										isLoadingHistory
+									}
+									className="h-9 w-9"
+								>
+									<Download className="h-5 w-5" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Export project (.x)</TooltipContent>
+						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={() => projectFileInputRef.current?.click()}
+									disabled={isCanvasLoading || isLoadingHistory}
+									className="h-9 w-9"
+								>
+									<Upload className="h-5 w-5" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Import project (.x)</TooltipContent>
+						</Tooltip>
 						<ThemeToggleButton />
 						<Separator orientation="vertical" className="h-8 mx-2" />
 						<Tooltip>
@@ -2794,6 +2931,13 @@ export default function AnnotationCanvas() {
 					accept="image/*"
 					ref={fileInputRef}
 					onChange={handleFileChange}
+					className="hidden"
+				/>
+				<input
+					type="file"
+					accept=".x,application/json"
+					ref={projectFileInputRef}
+					onChange={handleProjectFileChange}
 					className="hidden"
 				/>
 				<ImageHistoryTray

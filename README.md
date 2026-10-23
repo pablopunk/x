@@ -34,3 +34,4 @@
   - Dark/light theme
   - System theme detection
 - Image history with tabs
+- Export and import complete projects as `.x` files
