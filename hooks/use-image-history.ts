@@ -606,6 +606,7 @@ export const useImageHistory = () => {
 		historyLog,
 		isLoadingHistory: isLoading,
 		activeHistoryEntryId,
+		setActiveHistoryEntryId,
 		addOrUpdateHistoryEntry,
 		loadHistoryEntry,
 		loadAndActivateEntryFromMetadata,
@@ -613,6 +614,5 @@ export const useImageHistory = () => {
 		exportProject,
 		importProject,
 		thumbnailCache,
-		setActiveHistoryEntryId,
 	};
 };

@@ -79,6 +79,10 @@ const TEXT_BACKGROUND_PADDING_X = 8;
 const TEXT_BACKGROUND_PADDING_Y = 4;
 
 type ResizeHandle = "nw" | "ne" | "sw" | "se";
+interface CanvasImageSnapshot {
+	image: HTMLImageElement | null;
+	historyEntryId: string | null;
+}
 
 interface CanvasPointerEvent {
 	clientX: number;
@@ -339,6 +343,7 @@ export default function AnnotationCanvas() {
 		historyLog,
 		isLoadingHistory,
 		activeHistoryEntryId,
+		setActiveHistoryEntryId,
 		addOrUpdateHistoryEntry,
 		loadHistoryEntry,
 		loadAndActivateEntryFromMetadata,
@@ -348,7 +353,10 @@ export default function AnnotationCanvas() {
 		thumbnailCache,
 	} = useImageHistory();
 
-	const annotationHistory = useAnnotationHistory<Annotation[]>([]);
+	const annotationHistory = useAnnotationHistory<
+		Annotation[],
+		CanvasImageSnapshot
+	>([], { image: null, historyEntryId: null });
 	const gestureStartAnnotationsRef = useRef<Annotation[] | null>(null);
 	const [currentTool, setCurrentTool] = useState<Tool>("cursor");
 	const [isDrawing, setIsDrawing] = useState(false);
@@ -1108,6 +1116,19 @@ export default function AnnotationCanvas() {
 	}, [mainImage, drawCanvas, activeHistoryEntryId, historyLog]);
 
 	useEffect(() => {
+		const { image, historyEntryId } = annotationHistory.metadata;
+		setMainImage(image);
+		setActiveHistoryEntryId(historyEntryId);
+		setSelectedAnnotationId(null);
+
+		const canvas = canvasRef.current;
+		if (canvas) {
+			canvas.width = image?.width ?? 600;
+			canvas.height = image?.height ?? 400;
+		}
+	}, [annotationHistory.metadata, setActiveHistoryEntryId]);
+
+	useEffect(() => {
 		if (textInputPosition && textInputFieldRef.current) {
 			setTimeout(() => textInputFieldRef.current?.focus(), 0);
 		}
@@ -1212,7 +1233,22 @@ export default function AnnotationCanvas() {
 						await loadAndActivateEntryFromMetadata(newEntryMetadata);
 					if (loadedEntry) {
 						setMainImage(loadedEntry.image);
-						annotationHistory.reset(loadedEntry.annotations);
+						const nextImageSnapshot = {
+							image: loadedEntry.image,
+							historyEntryId: loadedEntry.id,
+						};
+						if (mainImage) {
+							annotationHistory.commit(
+								annotationHistory.state,
+								loadedEntry.annotations,
+								nextImageSnapshot,
+							);
+						} else {
+							annotationHistory.reset(
+								loadedEntry.annotations,
+								nextImageSnapshot,
+							);
+						}
 						setSelectedAnnotationId(null);
 						const canvas = canvasRef.current;
 						if (canvas) {
@@ -2247,7 +2283,14 @@ export default function AnnotationCanvas() {
 					await loadAndActivateEntryFromMetadata(newEntryMetadata);
 				if (loadedEntry) {
 					setMainImage(loadedEntry.image);
-					annotationHistory.reset(loadedEntry.annotations);
+					annotationHistory.commit(
+						annotationHistory.state,
+						loadedEntry.annotations,
+						{
+							image: loadedEntry.image,
+							historyEntryId: loadedEntry.id,
+						},
+					);
 					setSelectedAnnotationId(null);
 					const canvas = canvasRef.current;
 					if (canvas) {
@@ -2330,7 +2373,10 @@ export default function AnnotationCanvas() {
 			const loadedEntry = await loadHistoryEntry(entryId);
 			if (loadedEntry) {
 				setMainImage(loadedEntry.image);
-				annotationHistory.reset(loadedEntry.annotations);
+				annotationHistory.reset(loadedEntry.annotations, {
+					image: loadedEntry.image,
+					historyEntryId: loadedEntry.id,
+				});
 				setSelectedAnnotationId(null);
 				const canvas = canvasRef.current;
 				if (canvas) {
@@ -2351,14 +2397,20 @@ export default function AnnotationCanvas() {
 			await deleteHistoryEntry(entryId);
 			if (entryId === activeHistoryEntryId) {
 				setMainImage(null);
-				annotationHistory.reset([]);
+				annotationHistory.reset([], {
+					image: null,
+					historyEntryId: null,
+				});
 				const newLog = historyLog.filter((e) => e.id !== entryId);
 				if (newLog.length > 0) {
 					await handleSelectHistoryEntry(newLog[0].id);
 				}
 			} else if (historyLog.filter((e) => e.id !== entryId).length === 0) {
 				setMainImage(null);
-				annotationHistory.reset([]);
+				annotationHistory.reset([], {
+					image: null,
+					historyEntryId: null,
+				});
 			}
 		} catch (error) {
 			console.error("Error deleting from tray:", error);
@@ -2537,7 +2589,7 @@ export default function AnnotationCanvas() {
 								variant="ghost"
 								size="icon"
 								onClick={annotationHistory.undo}
-								title="Undo Annotation"
+								title="Undo"
 								disabled={
 									!annotationHistory.canUndo ||
 									isCanvasLoading ||
@@ -2555,7 +2607,7 @@ export default function AnnotationCanvas() {
 								variant="ghost"
 								size="icon"
 								onClick={annotationHistory.redo}
-								title="Redo Annotation"
+								title="Redo"
 								disabled={
 									!annotationHistory.canRedo ||
 									isCanvasLoading ||
