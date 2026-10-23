@@ -427,11 +427,11 @@ export const useImageHistory = () => {
 		historyLog,
 		isLoadingHistory: isLoading,
 		activeHistoryEntryId,
+		setActiveHistoryEntryId,
 		addOrUpdateHistoryEntry,
 		loadHistoryEntry,
 		loadAndActivateEntryFromMetadata,
 		deleteHistoryEntry,
 		thumbnailCache,
-		setActiveHistoryEntryId,
 	};
 };
