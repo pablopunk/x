@@ -1256,6 +1256,11 @@ export default function AnnotationCanvas() {
 							canvas.height = loadedEntry.image.height;
 						}
 					} else {
+						toast({
+							variant: "destructive",
+							title: "Image upload failed",
+							description: `The uploaded file "${file.name}" could not be loaded as an image.`,
+						});
 						setMainImage(null);
 						annotationHistory.reset([]);
 					}
